@@ -1,0 +1,24 @@
+load("@fbcode_macros//build_defs:rust_library.bzl", "rust_library")
+
+oncall("sapling")
+
+rust_library(
+    name = "iobuf",
+    srcs = ["src/**/*.rs"],
+    autocargo = {
+        "cargo_toml_config": {
+            "lints": {
+                "rust": {
+                    "unexpected_cfgs": {
+                        "check-cfg": ["cfg(fbcode_build)"],
+                        "level": "warn",
+                    },
+                },
+            },
+        },
+    },
+    crate_root = "src/lib.rs",
+    deps = [
+        "fbsource//third-party/rust:cxx",
+    ]
+)
