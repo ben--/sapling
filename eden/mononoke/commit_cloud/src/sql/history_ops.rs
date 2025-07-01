@@ -112,6 +112,7 @@ impl GenericGet<WorkspaceHistory> for SqlCommitCloud {
             GetType::GetHistoryVersionTimestamp => {
                 let rows = GetHistoryVersionTimestamp::query(
                     &self.connections.read_connection,
+                    None,
                     &reponame,
                     &workspace,
                 )
@@ -129,6 +130,7 @@ impl GenericGet<WorkspaceHistory> for SqlCommitCloud {
             GetType::GetHistoryDate { timestamp, limit } => {
                 let rows = GetHistoryDate::query(
                     &self.connections.read_connection,
+                    None,
                     &reponame,
                     &workspace,
                     &timestamp.timestamp_seconds(),
@@ -157,6 +159,7 @@ impl GenericGet<WorkspaceHistory> for SqlCommitCloud {
             GetType::GetHistoryVersion { version } => {
                 let rows = GetHistoryVersion::query(
                     &self.connections.read_connection,
+                    None,
                     &reponame,
                     &workspace,
                     &version,
@@ -197,7 +200,7 @@ impl Delete<WorkspaceHistory> for SqlCommitCloud {
         workspace: String,
         args: Self::DeleteArgs,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = DeleteHistory::maybe_traced_query_with_transaction(
+        let (txn, _) = DeleteHistory::query_with_transaction(
             txn,
             cri,
             &reponame,
@@ -235,7 +238,7 @@ impl Insert<WorkspaceHistory> for SqlCommitCloud {
 
         let timestamp = data.timestamp.unwrap_or(Timestamp::now_as_secs());
 
-        (res_txn, _) = InsertHistory::maybe_traced_query_with_transaction(
+        (res_txn, _) = InsertHistory::query_with_transaction(
             txn,
             cri,
             &reponame,
@@ -262,7 +265,7 @@ impl Update<WorkspaceHistory> for SqlCommitCloud {
         cc_ctx: CommitCloudContext,
         args: Self::UpdateArgs,
     ) -> anyhow::Result<(Transaction, u64)> {
-        let (txn, result) = UpdateWorkspaceName::maybe_traced_query_with_transaction(
+        let (txn, result) = UpdateWorkspaceName::query_with_transaction(
             txn,
             cri,
             &cc_ctx.reponame,

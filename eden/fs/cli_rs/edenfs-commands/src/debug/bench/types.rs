@@ -7,6 +7,8 @@
 
 //! Types for benchmarking
 
+use serde::Serialize;
+
 // Constants
 pub const BENCH_DIR_NAME: &str = "__fsiomicrobench__";
 pub const ROCKSDB_FILE_NAME: &str = "__rocksdb__";
@@ -14,6 +16,7 @@ pub const LMDB_FILE_NAME: &str = "__lmdb__";
 pub const SQLITE_FILE_NAME: &str = "__sqlite__";
 pub const COMBINED_DATA_FILE_NAME: &str = "__combined_data__";
 pub const DEFAULT_NUMBER_OF_FILES: usize = 64 * 1024;
+pub const DEFAULT_MAX_NUMBER_OF_FILES_FOR_TRAVERSAL: usize = 1024 * 1024;
 pub const DEFAULT_CHUNK_SIZE: usize = 4 * 1024;
 pub const NUMBER_OF_SUB_DIRS: usize = 256;
 pub const BYTES_IN_KILOBYTE: usize = 1024;
@@ -21,15 +24,13 @@ pub const BYTES_IN_MEGABYTE: usize = 1024 * BYTES_IN_KILOBYTE;
 pub const BYTES_IN_GIGABYTE: usize = 1024 * BYTES_IN_MEGABYTE;
 
 /// Represents the type of benchmark being performed
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub enum BenchmarkType {
     FsWriteMultipleFiles,
     FsReadMultipleFiles,
     FsWriteSingleFile,
     FsReadSingleFile,
     FsTraversal,
-    ThriftReadMultipleFiles,
-    ThriftReadSingleFile,
     RocksDbWriteMultipleFiles,
     RocksDbReadMultipleFiles,
     LmdbWriteMultipleFiles,
@@ -45,8 +46,6 @@ impl std::fmt::Display for BenchmarkType {
             BenchmarkType::FsReadMultipleFiles => write!(f, "Filesystem Read Multiple Files"),
             BenchmarkType::FsWriteSingleFile => write!(f, "Filesystem Write Single File"),
             BenchmarkType::FsReadSingleFile => write!(f, "Filesystem Read Single File"),
-            BenchmarkType::ThriftReadMultipleFiles => write!(f, "Thrift Read Multiple File"),
-            BenchmarkType::ThriftReadSingleFile => write!(f, "Thrift Read Single File"),
             BenchmarkType::FsTraversal => write!(f, "Filesystem Traversal"),
             BenchmarkType::RocksDbWriteMultipleFiles => write!(f, "RocksDB Write Multiple Files"),
             BenchmarkType::RocksDbReadMultipleFiles => write!(f, "RocksDB Read Multiple Files"),
@@ -58,14 +57,8 @@ impl std::fmt::Display for BenchmarkType {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, clap::ValueEnum)]
-pub enum ReadFileMethod {
-    Fs,
-    Thrift,
-}
-
 /// Represents the result of a benchmark operation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Benchmark {
     /// Type of the benchmark
     pub benchmark_type: BenchmarkType,
@@ -74,7 +67,7 @@ pub struct Benchmark {
 }
 
 /// Represents the unit of measurement for a metric
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub enum Unit {
     /// Megabytes per second (throughput)
     MiBps,
@@ -110,7 +103,7 @@ impl std::fmt::Display for Unit {
 }
 
 /// Represents a metric with a name, value, unit, and precision
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Metric {
     /// Name of the metric (e.g., "write()", "write() latency")
     pub name: String,

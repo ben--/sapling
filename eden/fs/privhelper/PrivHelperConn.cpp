@@ -9,12 +9,10 @@
 
 #include "eden/fs/privhelper/PrivHelperConn.h"
 
-#include <fcntl.h>
 #include <folly/Demangle.h>
 #include <folly/Exception.h>
 #include <folly/File.h>
 #include <folly/FileUtil.h>
-#include <folly/ScopeGuard.h>
 #include <folly/SocketAddress.h>
 #include <folly/futures/Future.h>
 #include <folly/io/Cursor.h>
@@ -22,8 +20,6 @@
 #include <folly/logging/xlog.h>
 #include <folly/portability/Sockets.h>
 #include <folly/portability/Unistd.h>
-#include <gflags/gflags.h>
-#include <sys/types.h>
 
 #include "eden/common/utils/Bug.h"
 #include "eden/common/utils/SystemError.h"
@@ -133,8 +129,16 @@ void serializeUint32(Appender& a, uint64_t val) {
   a.write<uint32_t>(val);
 }
 
-uint64_t deserializeUint32(Cursor& cursor) {
+uint32_t deserializeUint32(Cursor& cursor) {
   return cursor.read<uint32_t>();
+}
+
+void serializeInt32(Appender& a, int32_t val) {
+  a.write<int32_t>(val);
+}
+
+int32_t deserializeInt32(Cursor& cursor) {
+  return cursor.read<int32_t>();
 }
 
 void serializeSocketAddress(Appender& a, const folly::SocketAddress& addr) {
@@ -168,19 +172,14 @@ void serializeNFSMountOptions(Appender& a, const NFSMountOptions& options) {
   serializeUint32(a, options.iosize);
   serializeBool(a, options.useReaddirplus);
   serializeBool(a, options.useSoftMount);
-
-  // NFS options readIOSize => dumbtimer were all added at the same time, and
-  // therefore will either all be present or all be absent.
-  if (options.readIOSize.has_value()) {
-    serializeUint32(a, options.readIOSize.value());
-    serializeUint32(a, options.writeIOSize.value());
-    serializeOption(a, options.directoryReadSize.value());
-    serializeUint8(a, options.readAheadSize.value());
-    serializeUint32(a, options.retransmitTimeoutTenthSeconds.value());
-    serializeUint32(a, options.retransmitAttempts.value());
-    serializeUint32(a, options.deadTimeoutSeconds.value());
-    serializeOption(a, options.dumbtimer.value());
-  }
+  serializeUint32(a, options.readIOSize);
+  serializeUint32(a, options.writeIOSize);
+  serializeOption(a, options.directoryReadSize);
+  serializeUint8(a, options.readAheadSize);
+  serializeInt32(a, options.retransmitTimeoutTenthSeconds);
+  serializeUint32(a, options.retransmitAttempts);
+  serializeInt32(a, options.deadTimeoutSeconds);
+  serializeOption(a, options.dumbtimer);
 }
 
 NFSMountOptions deserializeNFSMountOptions(Cursor& cursor) {
@@ -191,28 +190,18 @@ NFSMountOptions deserializeNFSMountOptions(Cursor& cursor) {
   options.iosize = deserializeUint32(cursor);
   options.useReaddirplus = deserializeBool(cursor);
   options.useSoftMount = deserializeBool(cursor);
-
-  // We must be reading from newer NFS options, which contains more fields.
-  if (!cursor.isAtEnd()) {
-    // NFS options readIOSize => dumbtimer were all added at the same time, and
-    // therefore will either all be present or all be absent.
-    options.readIOSize = deserializeUint32(cursor);
-    options.writeIOSize = deserializeUint32(cursor);
-    options.directoryReadSize = deserializeOption<uint32_t>(cursor);
-    options.readAheadSize = deserializeUint8(cursor);
-    options.retransmitTimeoutTenthSeconds = deserializeUint32(cursor);
-    options.retransmitAttempts = deserializeUint32(cursor);
-    options.deadTimeoutSeconds = deserializeUint32(cursor);
-    options.dumbtimer = deserializeOption<bool>(cursor);
-  }
+  options.readIOSize = deserializeUint32(cursor);
+  options.writeIOSize = deserializeUint32(cursor);
+  options.directoryReadSize = deserializeOption<uint32_t>(cursor);
+  options.readAheadSize = deserializeUint8(cursor);
+  options.retransmitTimeoutTenthSeconds = deserializeInt32(cursor);
+  options.retransmitAttempts = deserializeUint32(cursor);
+  options.deadTimeoutSeconds = deserializeInt32(cursor);
+  options.dumbtimer = deserializeOption<bool>(cursor);
   return options;
 }
 
 void serializeUnmountOptions(Appender& a, const UnmountOptions& options) {
-  // TODO[T214491519] clean up UnmountOptions compatibility logic
-  if (options.skip_serialize) {
-    return;
-  }
   uint32_t bitset = 0;
   bitset |= options.force ? UnmountOptionBits::FORCE : 0;
   bitset |= options.detach ? UnmountOptionBits::DETACH : 0;
@@ -368,7 +357,7 @@ void PrivHelperConn::parseMountNfsRequest(
 UnixSocket::Message PrivHelperConn::serializeUnmountRequest(
     uint32_t xid,
     StringPiece mountPoint,
-    UnmountOptions& options) {
+    const UnmountOptions& options) {
   auto msg = serializeRequestPacket(xid, REQ_UNMOUNT_FUSE);
 
   Appender appender(&msg.data, kDefaultBufferSize);
@@ -683,6 +672,26 @@ void PrivHelperConn::parseSetLogFileRequest(folly::io::Cursor& cursor) {
   // REQ_SET_LOG_FILE has an empty body.  The only contents
   // are the file descriptor transferred with the request.
   checkAtEnd(cursor, "set log file request");
+}
+
+UnixSocket::Message PrivHelperConn::serializeSetMemoryPriorityForProcessRequest(
+    uint32_t xid,
+    pid_t pid,
+    int targetPriority) {
+  auto msg = serializeRequestPacket(xid, REQ_SET_MEMORY_PRIORITY_FOR_PROCESS);
+  Appender appender(&msg.data, kDefaultBufferSize);
+  appender.write<pid_t>(pid);
+  appender.write<int>(targetPriority);
+  return msg;
+}
+
+void PrivHelperConn::parseSetMemoryPriorityForProcessRequest(
+    Cursor& cursor,
+    pid_t& pid,
+    int& targetPriority) {
+  pid = cursor.read<pid_t>();
+  targetPriority = cursor.read<int>();
+  checkAtEnd(cursor, "set memory priority for process request");
 }
 
 void PrivHelperConn::serializeErrorResponse(

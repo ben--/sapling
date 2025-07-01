@@ -113,6 +113,20 @@ impl ServiceError {
             }
         }
     }
+
+    pub fn repo_not_found(&self) -> bool {
+        match self {
+            Self::Request(thrift::RequestError {
+                kind: thrift::RequestErrorKind::REPO_NOT_FOUND,
+                ..
+            }) => true,
+            Self::Request(thrift::RequestError {
+                kind: thrift::RequestErrorKind::LARGE_REPO_NOT_FOUND,
+                ..
+            }) => true,
+            _ => false,
+        }
+    }
 }
 
 pub trait ServiceErrorResultExt<T> {
@@ -224,6 +238,11 @@ impl From<MononokeError> for ServiceError {
             }),
             error @ MononokeError::MergeConflicts { .. } => Self::Request(thrift::RequestError {
                 kind: thrift::RequestErrorKind::MERGE_CONFLICTS,
+                reason: error.to_string(),
+                ..Default::default()
+            }),
+            error @ MononokeError::LargeRepoNotFound(_) => Self::Request(thrift::RequestError {
+                kind: thrift::RequestErrorKind::LARGE_REPO_NOT_FOUND,
                 reason: error.to_string(),
                 ..Default::default()
             }),
@@ -350,6 +369,7 @@ impl_into_thrift_error!(service::CommitFindFilesExn);
 impl_into_thrift_error!(service::CommitFindFilesStreamExn);
 impl_into_thrift_error!(service::CommitFindFilesStreamStreamExn);
 impl_into_thrift_error!(service::CommitHistoryExn);
+impl_into_thrift_error!(service::CommitHgMutationHistoryExn);
 impl_into_thrift_error!(service::CommitLinearHistoryExn);
 impl_into_thrift_error!(service::CommitListDescendantBookmarksExn);
 impl_into_thrift_error!(service::CommitRunHooksExn);

@@ -33,8 +33,10 @@ use mononoke_types::DateTime as MononokeDateTime;
 use mononoke_types::bonsai_changeset::BonsaiAnnotatedTag;
 use mononoke_types::hash::GitSha1;
 use packfile::bundle::BundleWriter;
+use packfile::bundle::RefNaming;
 use packfile::pack::DeltaForm;
 use protocol::generator::generate_pack_item_stream;
+use protocol::types::ChainBreakingMode;
 use protocol::types::DeltaInclusion;
 use protocol::types::PackItemStreamRequest;
 use protocol::types::PackfileItemInclusion;
@@ -407,6 +409,7 @@ pub async fn repo_stack_git_bundle(
         DeltaInclusion::Exclude, // We don't need deltas for this bundle
         TagInclusion::AsIs,
         PackfileItemInclusion::Generate,
+        ChainBreakingMode::Stochastic,
     );
     let response = generate_pack_item_stream(ctx.clone(), repo, request)
         .await
@@ -441,6 +444,7 @@ pub async fn repo_stack_git_bundle(
         response.num_items as u32,
         concurrency,
         DeltaForm::RefAndOffset,
+        RefNaming::AsIs,
     )
     .await
     .map_err(|e| {

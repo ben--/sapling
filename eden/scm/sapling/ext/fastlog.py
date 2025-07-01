@@ -24,19 +24,11 @@ Config::
 import heapq
 from collections import deque
 
-from sapling import error, extensions, match as matchmod, revset, smartset
+from sapling import extensions, match as matchmod, revset, smartset
 from sapling.i18n import _
-from sapling.node import bin, hex, nullrev
+from sapling.node import nullrev
+from sapling.pathlog import is_fastlog_enabled, strategy_fastlog
 from sapling.utils import subtreeutil
-
-from .extlib.phabricator import graphql
-
-
-conduit = None
-
-FASTLOG_MAX = 100
-FASTLOG_QUEUE_SIZE = 1000
-FASTLOG_TIMEOUT = 50
 
 
 class MultiPathError(ValueError):
@@ -138,19 +130,7 @@ def fastlogfollow(orig, repo, subset, x, name, followfirst: bool = False):
     else:
         startrev = repo["."].rev()
 
-    reponame = repo.ui.config("fbscmquery", "reponame")
-    if not reponame or not repo.ui.configbool("fastlog", "enabled"):
-        repo.ui.debug("fastlog: not used because fastlog is disabled\n")
-        return orig(repo, subset, x, name, followfirst)
-
-    try:
-        # Test that the GraphQL client can be constructed, to rule
-        # out configuration issues like missing `.arcrc` etc.
-        graphql.Client(repo=repo)
-    except Exception as ex:
-        repo.ui.debug(
-            "fastlog: not used because graphql client cannot be constructed: %r\n" % ex
-        )
+    if not is_fastlog_enabled(repo):
         return orig(repo, subset, x, name, followfirst)
 
     path = revset.getstring(args["file"], _("%s expected a pattern") % name)
@@ -214,9 +194,9 @@ def fastlogfollow(orig, repo, subset, x, name, followfirst: bool = False):
 
         start_node = repo[parent].node()
         while True:
-            log = FastLog(reponame, "hg", start_node, path, repo)
+            log = strategy_fastlog(repo, start_node, path)
             last_rev = None
-            for node in log.generate_nodes():
+            for node in log:
                 last_rev = repo.changelog.rev(node)
                 yield last_rev
 
@@ -294,74 +274,6 @@ def fastlogfollow(orig, repo, subset, x, name, followfirst: bool = False):
         fastlogset.reverse()
         return fastlogset & subset
     return subset & fastlogset
-
-
-class FastLog:
-    """Class which talks to a remote SCMQuery
-
-    We page results in windows of up to FASTLOG_MAX to avoid generating
-    too many results; this has been optimized on the server to cache
-    fast continuations but this assumes service stickiness.
-
-    * reponame - repository name (str)
-    * scm - scm type (str)
-    * start_node - node to start logging from
-    * path - path to request logs
-    * repo - mercurial repository object
-    """
-
-    def __init__(self, reponame, scm, node, path, repo):
-        self.reponame = reponame
-        self.scm = scm
-        self.start_node = node
-        self.path = path
-        self.repo = repo
-        self.ui = repo.ui
-
-    def gettodo(self):
-        return FASTLOG_MAX
-
-    def generate_nodes(self):
-        path = self.path
-        start_hex = hex(self.start_node)
-        reponame = self.reponame
-        skip = 0
-        usemutablehistory = self.ui.configbool("fastlog", "followmutablehistory")
-
-        while True:
-            results = None
-            todo = self.gettodo()
-            client = graphql.Client(repo=self.repo)
-            results = client.scmquery_log(
-                reponame,
-                self.scm,
-                start_hex,
-                file_paths=[path],
-                skip=skip,
-                number=todo,
-                use_mutable_history=usemutablehistory,
-                timeout=FASTLOG_TIMEOUT,
-            )
-
-            if results is None:
-                raise error.Abort(_("ScmQuery fastlog returned nothing unexpectedly"))
-
-            server_nodes = [bin(commit["hash"]) for commit in results]
-
-            # `filternodes` has a desired side effect that fetches nodes
-            # (in lazy changelog) in batch.
-            nodes = self.repo.changelog.filternodes(server_nodes)
-            if len(nodes) != len(server_nodes):
-                missing_nodes = set(server_nodes) - set(nodes)
-                self.repo.ui.status_err(
-                    _("fastlog: server returned extra nodes unknown locally: %s\n")
-                    % " ".join(sorted([hex(n) for n in missing_nodes]))
-                )
-            yield from nodes
-
-            skip += todo
-            if len(results) < todo:
-                break
 
 
 if __name__ == "__main__":

@@ -8,7 +8,7 @@ edition = "2024"
 license = "GPLv2+"
 
 [dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0.98"
 async-trait = "0.1.86"
 async_once_cell = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 blobstore = { version = "0.1.0", path = "../blobstore" }
@@ -18,7 +18,7 @@ bulk_derivation = { version = "0.1.0", path = "../derived_data/bulk_derivation" 
 bytes = { version = "1.9.0", features = ["serde"] }
 changesets_creation = { version = "0.1.0", path = "../changesets/changesets_creation" }
 commit_graph = { version = "0.1.0", path = "../repo_attributes/commit_graph/commit_graph" }
-commit_transformation = { version = "0.1.0", path = "commit_transformation" }
+commit_transformation = { version = "0.1.0", path = "../features/commit_transformation/commit_transformation" }
 content_manifest_derivation = { version = "0.1.0", path = "../derived_data/content_manifest_derivation" }
 context = { version = "0.1.0", path = "../server/context" }
 filestore = { version = "0.1.0", path = "../filestore" }
@@ -43,7 +43,8 @@ repo_blobstore = { version = "0.1.0", path = "../blobrepo/repo_blobstore" }
 repo_derived_data = { version = "0.1.0", path = "../repo_attributes/repo_derived_data" }
 repo_factory = { version = "0.1.0", path = "../repo_factory" }
 repo_identity = { version = "0.1.0", path = "../repo_attributes/repo_identity" }
-serde_json = { version = "1.0.140", features = ["float_roundtrip", "unbounded_depth"] }
+retry = { version = "0.1.0", path = "../common/retry" }
+serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "unbounded_depth"] }
 slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 sorted_vector_map = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 

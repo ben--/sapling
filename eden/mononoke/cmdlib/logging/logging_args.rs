@@ -44,6 +44,7 @@ use tracing_subscriber::filter::Directive;
 use tracing_subscriber::fmt::FmtContext;
 use tracing_subscriber::fmt::FormatEvent;
 use tracing_subscriber::fmt::FormatFields;
+use tracing_subscriber::fmt::FormattedFields;
 use tracing_subscriber::fmt::format;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
@@ -236,6 +237,13 @@ impl LoggingArgs {
             tracing::subscriber::set_global_default(subscriber)?;
         }
 
+        // Configure legacy logging (at ERROR or above) to go to tracing.
+        let stdlog_level_filter = log::LevelFilter::Error;
+        tracing_log::LogTracer::builder()
+            .with_max_level(stdlog_level_filter)
+            .init()?;
+        log::set_max_level(stdlog_level_filter);
+
         Ok(())
     }
 
@@ -384,6 +392,26 @@ where
         event: &Event<'_>,
     ) -> std::fmt::Result {
         write!(&mut writer, "[{}] ", event.metadata().level())?;
+
+        if let Some(scope) = ctx.event_scope() {
+            for span in scope.from_root() {
+                // Ignore well-known spans with per-request data that is not useful in tests.
+                if span.name() == "request_info" {
+                    continue;
+                }
+
+                write!(writer, "[{}", span.name())?;
+
+                let ext = span.extensions();
+                if let Some(fields) = &ext.get::<FormattedFields<N>>() {
+                    if !fields.is_empty() {
+                        write!(writer, "{{{}}}", fields)?;
+                    }
+                }
+
+                write!(writer, "] ")?;
+            }
+        }
 
         ctx.field_format().format_fields(writer.by_ref(), event)?;
 

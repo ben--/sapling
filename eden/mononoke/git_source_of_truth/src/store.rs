@@ -125,6 +125,7 @@ impl GitSourceOfTruthConfig for SqlGitSourceOfTruthConfig {
     ) -> Result<()> {
         Set::query(
             &self.connections.write_connection,
+            None,
             &repo_id,
             &repo_name,
             &source_of_truth,
@@ -139,7 +140,7 @@ impl GitSourceOfTruthConfig for SqlGitSourceOfTruthConfig {
         repo_name: &RepositoryName,
         staleness: Staleness,
     ) -> Result<Option<GitSourceOfTruthConfigEntry>> {
-        let rows = GetByRepoName::query(self.get_connection(staleness), repo_name).await?;
+        let rows = GetByRepoName::query(self.get_connection(staleness), None, repo_name).await?;
         Ok(rows.into_iter().next().map(row_to_entry))
     }
 
@@ -149,6 +150,7 @@ impl GitSourceOfTruthConfig for SqlGitSourceOfTruthConfig {
     ) -> Result<Vec<GitSourceOfTruthConfigEntry>> {
         let rows = GetByGitSourceOfTruth::query(
             &self.connections.read_master_connection,
+            None,
             &GitSourceOfTruth::Mononoke,
         )
         .await?;
@@ -161,6 +163,7 @@ impl GitSourceOfTruthConfig for SqlGitSourceOfTruthConfig {
     ) -> Result<Vec<GitSourceOfTruthConfigEntry>> {
         let rows = GetByGitSourceOfTruth::query(
             &self.connections.read_master_connection,
+            None,
             &GitSourceOfTruth::Metagit,
         )
         .await?;
@@ -170,6 +173,7 @@ impl GitSourceOfTruthConfig for SqlGitSourceOfTruthConfig {
     async fn get_locked(&self, _ctx: &CoreContext) -> Result<Vec<GitSourceOfTruthConfigEntry>> {
         let rows = GetByGitSourceOfTruth::query(
             &self.connections.read_master_connection,
+            None,
             &GitSourceOfTruth::Locked,
         )
         .await?;

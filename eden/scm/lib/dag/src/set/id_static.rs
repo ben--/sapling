@@ -412,9 +412,9 @@ impl IdStaticSet {
     }
 
     pub(crate) fn slice_spans(mut self, skip: u64, take: u64) -> Self {
-        let (skip, take) = match self.iteration_order {
+        let len = self.spans.count();
+        let (skip, mut take) = match self.iteration_order {
             IterationOrder::Asc | IterationOrder::CustomReversed(_) => {
-                let len = self.spans.count();
                 // [---take1----][skip]
                 // [skip2][take2][skip]
                 // [--------len-------]
@@ -429,22 +429,30 @@ impl IdStaticSet {
                 (skip, take)
             }
         };
-        match self.iteration_order {
-            IterationOrder::Custom(ref mut list) | IterationOrder::CustomReversed(ref mut list) => {
-                match (skip, take) {
-                    (0, u64::MAX) => {}
-                    (0, _) => *list = list.take(take),
-                    (_, u64::MAX) => *list = list.skip(skip),
-                    _ => *list = list.skip(skip).take(take),
-                };
-                self.spans = list.to_set();
+        if skip >= len {
+            take = 0;
+        } else if skip.saturating_add(take) >= len {
+            take = u64::MAX;
+        }
+        if skip != 0 || take != u64::MAX {
+            match self.iteration_order {
+                IterationOrder::Custom(ref mut list)
+                | IterationOrder::CustomReversed(ref mut list) => {
+                    match (skip, take) {
+                        (0, _) => *list = list.take(take),
+                        (_, u64::MAX) => *list = list.skip(skip),
+                        _ => *list = list.skip(skip).take(take),
+                    };
+                    self.spans = list.to_set();
+                }
+                _ => match (skip, take) {
+                    (0, _) => self.spans = self.spans.take(take),
+                    (_, u64::MAX) => self.spans = self.spans.skip(skip),
+                    _ => self.spans = self.spans.skip(skip).take(take),
+                },
             }
-            _ => match (skip, take) {
-                (0, u64::MAX) => {}
-                (0, _) => self.spans = self.spans.take(take),
-                (_, u64::MAX) => self.spans = self.spans.skip(skip),
-                _ => self.spans = self.spans.skip(skip).take(take),
-            },
+            // No longer sound to keep the ANCESTORS hint.
+            self.hints.remove_flags(Flags::ANCESTORS);
         }
         self
     }
@@ -1121,6 +1129,20 @@ pub(crate) mod tests {
                 dbg(r(dag.ancestors(bfg.clone()))?),
                 "<spans [F:G+5:6, B+1]>"
             );
+
+            let g: Set = "G".into();
+            let g_ancestors = r(dag.ancestors(g))?;
+            assert!(g_ancestors.hints().contains(Flags::ANCESTORS));
+
+            // g_ancestors.take(1) should lose the ANCESTORS hint.
+            assert!(!g_ancestors.take(1).hints().contains(Flags::ANCESTORS));
+            assert_eq!(
+                dbg(r(dag.first_ancestors(g_ancestors.take(1)))?),
+                "<spans [E:G+4:6, A:B+0:1]>",
+            );
+
+            // g_ancestors.take(99) keeps the ANCESTORS hint because it preserves the entire set.
+            assert!(g_ancestors.take(99).hints().contains(Flags::ANCESTORS));
 
             Ok(())
         })

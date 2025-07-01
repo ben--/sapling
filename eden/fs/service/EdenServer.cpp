@@ -422,6 +422,12 @@ static constexpr folly::StringPiece kNfsReadDirPlusCount60{
 
 static constexpr folly::StringPiece kFsChannelTaskCount{"fs.task.count"};
 static constexpr folly::StringPiece kMemoryVmRssBytes{"memory_vm_rss_bytes"};
+#ifdef __APPLE__
+static constexpr folly::StringPiece kMemoryCompressedBytes{
+    "memory_compressed_bytes"};
+static constexpr folly::StringPiece kMemoryFootprintBytes{
+    "memory_footprint_bytes"};
+#endif
 
 EdenServer::EdenServer(
     std::vector<std::string> originalCommandLine,
@@ -554,6 +560,25 @@ EdenServer::EdenServer(
   });
 
 #ifdef __APPLE__
+  // On macOS, export extra memory counters
+  counters->registerCallback(kMemoryCompressedBytes, [] {
+    auto memoryStats = facebook::eden::proc_util::readMemoryStats();
+    if (memoryStats && memoryStats->compressed) {
+      return memoryStats->compressed.value();
+    } else {
+      return (size_t)0;
+    }
+  });
+
+  counters->registerCallback(kMemoryFootprintBytes, [] {
+    auto memoryStats = facebook::eden::proc_util::readMemoryStats();
+    if (memoryStats && memoryStats->footprint) {
+      return memoryStats->footprint.value();
+    } else {
+      return (size_t)0;
+    }
+  });
+
   // On macOS, export the NFS clients/servers counters
   if (config_->getEdenConfig()->updateNFSStatsInterval.getValue() > 0ms) {
     auto result = collectNFSUtilStats();
@@ -613,6 +638,9 @@ EdenServer::~EdenServer() {
   }
   counters->unregisterCallback(kFsChannelTaskCount);
 #ifdef __APPLE__
+  counters->unregisterCallback(kMemoryCompressedBytes);
+  counters->unregisterCallback(kMemoryFootprintBytes);
+
   for (const auto& nfsStatsCounter : kNfsStatsToEdenStatsMap_) {
     auto counterName = mapCounterNameForNFSStat(nfsStatsCounter);
     if (counterName.has_value()) {
@@ -2441,6 +2469,15 @@ folly::SemiFuture<Unit> EdenServer::createThriftServer() {
   server_->leakOutstandingRequestsWhenServerStops(
       edenConfig->thriftLeakOutstandingRequestsWhenServerStops.getValue());
 
+  // S532385: The above leakOutstandingRequestsWhenServerStops config has
+  // memory safety issues. We'd like to remove it, but removing it leads to a
+  // new class of bugs where outstanding requests do not complete and the
+  // server crashes as a result. This config attempts to mitigate that by
+  // allowing more time for each request to complete on shutdown.
+  server_->setWorkersJoinTimeout(
+      std::chrono::duration_cast<std::chrono::seconds>(
+          edenConfig->thriftWorkersJoinTimeout.getValue()));
+
 #ifdef EDEN_HAVE_USAGE_SERVICE
   auto usageService = std::make_unique<EdenFSSmartPlatformServiceEndpoint>(
       serverState_->getThreadPool(), serverState_->getEdenConfig());
@@ -2755,13 +2792,13 @@ ImmediateFuture<uint64_t> EdenServer::garbageCollectWorkingCopy(
                 mountPath,
                 inodeMap = mount.getInodeMap(),
                 totalNumberOfInodesBeforeGC](
-                   folly::Try<uint64_t> numInvalidatedTry) {
+                   folly::Try<std::pair<uint64_t, bool>> invalidatedTry) {
         auto runtime =
             std::chrono::duration<double>{workingCopyRuntime.elapsed()};
 
-        bool success = numInvalidatedTry.hasValue();
+        bool success = invalidatedTry.hasValue();
         int64_t numInvalidated =
-            success ? folly::to_signed(numInvalidatedTry.value()) : 0;
+            success ? folly::to_signed(invalidatedTry.value().first) : 0;
         auto inodeCountsAfterGC = inodeMap->getInodeCounts();
         auto totalNumberOfInodesAfterGC = inodeCountsAfterGC.fileCount +
             inodeCountsAfterGC.treeCount +
@@ -2773,15 +2810,25 @@ ImmediateFuture<uint64_t> EdenServer::garbageCollectWorkingCopy(
             success,
             static_cast<int64_t>(
                 (totalNumberOfInodesBeforeGC - totalNumberOfInodesAfterGC))});
+#ifdef __APPLE__
         XLOGF(
             DBG1,
-            "GC for: {}, completed in: {} seconds and invalidated {} inodes, total number of inodes {}",
+            "GC for: {}, completed in: {} seconds and invalidated {} tree inodes, total number of inodes after GC: {}",
             mountPath,
             runtime.count(),
             numInvalidated,
             totalNumberOfInodesAfterGC);
+#else
+        XLOGF(
+            DBG1,
+            "GC for: {}, completed in: {} seconds and invalidated {} inodes, total number of inodes after GC: {}",
+            mountPath,
+            runtime.count(),
+            numInvalidated,
+            totalNumberOfInodesAfterGC);
+#endif
 
-        return numInvalidatedTry;
+        return invalidatedTry.value().first;
       });
 }
 
@@ -2853,6 +2900,14 @@ void EdenServer::accidentalUnmountRecovery() {
       // This mount point is not currently mounted, but it was configured
       // in config.json.  This means that the client was unmounted.
       // We should attempt to remount it, if it is unmounted accidentally.
+
+      auto nfsServer = serverState_->getNfsServer();
+      if (nfsServer && nfsServer->isMountRegistered(mountPath)) {
+        // This mount point is registered with the NFS server, so it is
+        // probably in the process of being unmounted.  We should not
+        // attempt to remount it.
+        continue;
+      }
 
       auto edenClientPath =
           edenDir_.getCheckoutStateDir(client.second.stringPiece());

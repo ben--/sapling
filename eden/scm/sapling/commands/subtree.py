@@ -5,7 +5,6 @@
 
 import json
 import os
-import time
 from collections import defaultdict
 
 from .. import (
@@ -17,6 +16,7 @@ from .. import (
     match as matchmod,
     merge as mergemod,
     node,
+    pathlog,
     pathutil,
     progress,
     registrar,
@@ -46,8 +46,14 @@ from ..utils.subtreeutil import (
 from .cmdtable import command
 
 MAX_SUBTREE_COPY_FILE_COUNT = 10_000
-MERGE_BASE_TIMEOUT_SECS = 120
 COPY_REUSE_TREE = False
+
+MERGE_BASE_STRATEGIES = [
+    # Walk only the from‑path’s history when searching for a merge base.
+    "only-from",
+    # Walk only the to‑path’s history when searching for a merge base.
+    "only-to",
+]
 
 readonly = registrar.command.readonly
 
@@ -110,7 +116,19 @@ subtree_subcmd = subtree.subcommand(
     _("[-r REV] --from-path PATH --to-path PATH ..."),
 )
 def subtree_copy(ui, repo, *args, **opts):
-    """create a directory or file branching"""
+    """create a directory or file branching
+
+    To create a branch from the directory "my-project" at commit A into the
+    directory "my-branch", use::
+
+      @prog@ subtree cp -r A --from-path my-project --to-path my-branch
+
+    Subtree copy also supports multiple "--from-path"/"--to-path" mappings::
+
+      @prog@ subtree cp \\
+        --from-path my-project --to-path my-branch1 \\
+        --from-path my-project --to-path my-branch2
+    """
     with repo.wlock(), repo.lock():
         return _docopy(ui, repo, *args, **opts)
 
@@ -247,13 +265,34 @@ def subtree_graft(ui, repo, **opts):
     "merge",
     [
         ("r", "rev", "", _("revisions to merge"), _("REV")),
+        (
+            "",
+            "merge-base-strategy",
+            "",
+            _("strategy for searching merge‑base: %s")
+            % ", ".join(MERGE_BASE_STRATEGIES),
+        ),
     ]
     + mergetoolopts
     + subtree_path_opts,
     _("[OPTION]... --from-path PATH --to-path PATH"),
 )
 def subtree_merge(ui, repo, **opts):
-    """merge a path of the specified commit into a different path of the current commit"""
+    """merge a path of the specified commit into a different path of the current commit
+
+    To merge the directory branch "my-branch" at commit A into "my-project", run::
+
+      @prog@ subtree merge -r A --from-path my-branch --to-path my-project
+
+    If "-r/--rev" option is not specified, "-r ." is used as the default value.
+
+    By default @Product@ scans the history of both "--from-path" and "to-path" to
+    find the best merge base. If one side’s history is massive, that can get slow.
+    Narrow the search with "--merge-base-strategy":
+
+    - only-from: walk only the from-path's history
+    - only-to: walk only the to-path's history
+    """
     ctx = repo["."]
     from_ctx = scmutil.revsingle(repo, opts.get("rev"))
     from_paths = scmutil.rootrelpaths(ctx, opts.get("from_path"))
@@ -269,13 +308,17 @@ def subtree_merge(ui, repo, **opts):
     subtreeutil.validate_file_count(repo, from_ctx, from_paths)
 
     merge_base_ctx = _subtree_merge_base(
-        repo, ctx, to_paths[0], from_ctx, from_paths[0]
+        repo, ctx, to_paths[0], from_ctx, from_paths[0], opts
     )
     ui.status("merge base: %s\n" % merge_base_ctx)
     cmdutil.registerdiffgrafts(from_paths, to_paths, ctx, from_ctx)
 
     with ui.configoverride(
-        {("ui", "forcemerge"): opts.get("tool", "")}, "subtree_merge"
+        {
+            ("ui", "forcemerge"): opts.get("tool", ""),
+            ("subtree", "allow-merge-subtree-copy-commit"): True,
+        },
+        "subtree_merge",
     ):
         labels = ["working copy", "merge rev"]
         stats = mergemod.merge(
@@ -355,7 +398,7 @@ def subtree_inspect(ui, repo, *args, **opts):
     ui.write(f"{result_json}\n")
 
 
-def _subtree_merge_base(repo, to_ctx, to_path, from_ctx, from_path):
+def _subtree_merge_base(repo, to_ctx, to_path, from_ctx, from_path, opts):
     """get the best merge base for subtree merge
 
     There are two major use cases for subtree merge:
@@ -387,6 +430,23 @@ def _subtree_merge_base(repo, to_ctx, to_path, from_ctx, from_path):
         except IndexError:
             return None
 
+    def get_to_path_history(repo, node, path, strategy):
+        if strategy == "only-from":
+            return iter([])
+        return pathlog.pathlog(repo, node, path, is_prefetch_commit_text=True)
+
+    def get_from_path_history(repo, node, path, strategy):
+        if strategy == "only-to":
+            return iter([])
+        return pathlog.pathlog(repo, node, path, is_prefetch_commit_text=True)
+
+    strategy = opts.get("merge_base_strategy")
+    if strategy and strategy not in MERGE_BASE_STRATEGIES:
+        raise error.Abort(
+            _("invalid merge base strategy: %s") % strategy,
+            hint=_("valid strategies: %s") % ", ".join(MERGE_BASE_STRATEGIES),
+        )
+
     dag = repo.changelog.dag
     if from_path == to_path:
         nodes = [from_ctx.node(), to_ctx.node()]
@@ -394,25 +454,23 @@ def _subtree_merge_base(repo, to_ctx, to_path, from_ctx, from_path):
         return registerdiffgrafts(repo[gca], 0)
 
     ui = repo.ui
-    mergebase_timeout_secs = ui.configint(
-        "subtree", "merge-base-timeout-secs", MERGE_BASE_TIMEOUT_SECS
-    )
-    ui.status(
-        _("computing merge base (timeout: %d seconds)...\n") % mergebase_timeout_secs
-    )
+    ui.status(_("searching for merge base ...\n"))
     isancestor = dag.isancestor
-    to_hist = repo.pathhistory([to_path], dag.ancestors([to_ctx.node()]))
-    from_hist = repo.pathhistory([from_path], dag.ancestors([from_ctx.node()]))
+    to_hist = get_to_path_history(repo, to_ctx.node(), to_path, strategy)
+    from_hist = get_from_path_history(repo, from_ctx.node(), from_path, strategy)
 
     iters = [to_hist, from_hist]
     paths = [to_path, from_path]
 
     # we ensure that 'from_path' and 'to_path' exist, so it should be safe to call
     # next() on both iterators.
-    heads = [next(iters[0]), next(iters[1])]
-    has_ancestor_relation = dag.gcaone(heads) in heads
+    heads = [
+        # heads[0] is the head of the to_path history
+        None if strategy == "only-from" else next(iters[0]),
+        # heads[1] is the head of the from_path history
+        None if strategy == "only-to" else next(iters[1]),
+    ]
     i = 1
-    start_time = time.time()
     with progress.bar(
         ui,
         _("searching commit history"),
@@ -420,12 +478,14 @@ def _subtree_merge_base(repo, to_ctx, to_path, from_ctx, from_path):
     ) as p:
         while True:
             p.value += 1
-            if int(time.time() - start_time) >= mergebase_timeout_secs:
-                break
-            # check the other one by default
-            i = 1 - i
-            # if they have direct ancestor relationship, then selects the newer one
-            if has_ancestor_relation:
+            if strategy == "only-to":
+                i = 0
+            elif strategy == "only-from":
+                i = 1
+            else:
+                # check the other one by default
+                i = 1 - i
+                # if they have direct ancestor relationship, then selects the newer one
                 if isancestor(heads[0], heads[1]):
                     i = 1
                 elif isancestor(heads[1], heads[0]):
@@ -433,14 +493,23 @@ def _subtree_merge_base(repo, to_ctx, to_path, from_ctx, from_path):
 
             # check merge info
             curr_node = heads[i]
+            ui.debug("checking commit %s\n" % node.short(curr_node))
             for merge in get_subtree_merges(repo, curr_node):
                 if merge.to_path == paths[i] and merge.from_path == paths[1 - i]:
+                    ui.status(
+                        _("found the last subtree merge commit %s\n")
+                        % node.short(curr_node)
+                    )
                     merge_base_ctx = repo[merge.from_commit]
                     return registerdiffgrafts(merge_base_ctx, i)
 
             # check branch info
             for branch in get_subtree_branches(repo, curr_node):
                 if branch.to_path == paths[i] and branch.from_path == paths[1 - i]:
+                    ui.status(
+                        _("found the last subtree copy commit %s\n")
+                        % node.short(curr_node)
+                    )
                     merge_base_ctx = repo[branch.from_commit]
                     return registerdiffgrafts(merge_base_ctx, i)
 
@@ -450,30 +519,6 @@ def _subtree_merge_base(repo, to_ctx, to_path, from_ctx, from_path):
             except StopIteration:
                 p1 = get_p1(dag, curr_node) or curr_node
                 return registerdiffgrafts(repo[p1], i)
-
-    # merge base computation timed out
-    ui.status(
-        _(
-            "merge base computation timed out, falling back to directory creation commit\n"
-        )
-    )
-
-    to_create_node = repo.pathcreation(to_path, dag.ancestors([to_ctx.node()]))
-    if not to_create_node:
-        raise error.Abort(_("cannot find the creation commit of '%s'") % to_path)
-    from_create_node = repo.pathcreation(from_path, dag.ancestors([from_ctx.node()]))
-    if not from_create_node:
-        raise error.Abort(_("cannot find the creation commit of '%s'") % from_path)
-
-    gca = dag.gcaone([to_create_node, from_create_node])
-    if gca == to_create_node:
-        ui.status(_("using the creation commit of 'from' path '%s'\n") % from_path)
-        p1 = get_p1(dag, from_create_node) or from_create_node
-        return registerdiffgrafts(repo[p1], 1)
-    else:
-        ui.status(_("using the creation commit of 'to' path '%s'\n") % to_path)
-        p1 = get_p1(dag, to_create_node) or to_create_node
-        return registerdiffgrafts(repo[p1], 0)
 
 
 def _docopy(ui, repo, *args, **opts):

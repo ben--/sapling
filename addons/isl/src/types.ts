@@ -532,6 +532,20 @@ export type CommitCloudSyncState = {
   isDisabled?: boolean;
 };
 
+export type SubmoduleInfo = {
+  name: string;
+  path: RepoRelativePath;
+  url: string;
+  ref: string | undefined;
+  active: boolean;
+};
+export type Submodules = Array<SubmoduleInfo>;
+/**
+ * An undefined value if git submodules are not supported by the repo.
+ * An error if unexpected errors occurred during the fetch process.
+ */
+export type FetchedSubmodules = Result<Submodules | undefined>;
+
 export type AlertSeverity = 'SEV 0' | 'SEV 1' | 'SEV 2' | 'SEV 3' | 'SEV 4' | 'UBN';
 export type Alert = {
   key: string;
@@ -664,6 +678,12 @@ export type PlatformSpecificClientToServerMessages =
   | {type: 'platform/subscribeToUnsavedFiles'}
   | {type: 'platform/saveAllUnsavedFiles'}
   | {type: 'platform/setPersistedState'; key: string; data?: string}
+  | {type: 'platform/subscribeToSuggestedEdits'}
+  | {
+      type: 'platform/resolveSuggestedEdits';
+      action: 'accept' | 'reject';
+      files: Array<AbsolutePath>;
+    }
   | {
       type: 'platform/setVSCodeConfig';
       config: string;
@@ -693,6 +713,7 @@ export type PlatformSpecificServerToClientMessages =
       type: 'platform/gotDiagnostics';
       diagnostics: Map<RepoRelativePath, Array<Diagnostic>>;
     }
+  | {type: 'platform/onDidChangeSuggestedEdits'; files: Array<AbsolutePath>}
   | {
       type: 'platform/vscodeConfigChanged';
       config: string;
@@ -720,7 +741,11 @@ export type FileABugProgress =
   | {status: 'error'; error: Error};
 export type FileABugProgressMessage = {type: 'fileBugReportProgress'} & FileABugProgress;
 
-export type SubscriptionKind = 'uncommittedChanges' | 'smartlogCommits' | 'mergeConflicts';
+export type SubscriptionKind =
+  | 'uncommittedChanges'
+  | 'smartlogCommits'
+  | 'mergeConflicts'
+  | 'submodules';
 
 export const allConfigNames = [
   // these config names are for compatibility.
@@ -912,12 +937,18 @@ export type ClientToServerMessage =
       type: 'fetchQeDetails';
       id: string;
       name: string;
+    }
+  | {
+      type: 'fetchTaskDetails';
+      id: string;
+      taskNumber: number;
     };
 
 export type SubscriptionResultsData = {
   uncommittedChanges: FetchedUncommittedChanges;
   smartlogCommits: FetchedCommits;
   mergeConflicts: MergeConflicts | undefined;
+  submodules: FetchedSubmodules;
 };
 
 export type SubscriptionResult<K extends SubscriptionKind> = {
@@ -931,6 +962,7 @@ export type ServerToClientMessage =
   | SubscriptionResult<'smartlogCommits'>
   | SubscriptionResult<'uncommittedChanges'>
   | SubscriptionResult<'mergeConflicts'>
+  | SubscriptionResult<'submodules'>
   | BeganFetchingSmartlogCommitsEvent
   | BeganFetchingUncommittedChangesEvent
   | FileABugProgressMessage
@@ -1035,6 +1067,11 @@ export type ServerToClientMessage =
       type: 'fetchedQeDetails';
       id: string;
       result: Result<InternalTypes['InternalQuickExperiment']>;
+    }
+  | {
+      type: 'fetchedTaskDetails';
+      id: string;
+      result: Result<InternalTypes['InternalTaskDetails']>;
     };
 
 export type Disposable = {

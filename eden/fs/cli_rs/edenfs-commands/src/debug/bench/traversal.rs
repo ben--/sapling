@@ -17,18 +17,21 @@ use std::time::Instant;
 use anyhow::Result;
 use edenfs_client::client::Client;
 use edenfs_client::methods::EdenThriftMethod;
+use edenfs_utils::bytes_from_path;
 use indicatif::ProgressBar;
 use indicatif::ProgressStyle;
+use sysinfo::Pid;
+use sysinfo::System;
+use thrift_types::edenfs::MountId;
 use thrift_types::edenfs::ScmBlobOrError;
+use thrift_types::edenfs::SyncBehavior;
 
-use super::fsio::get_thrift_request;
-use super::fsio::split_fbsource_file_path;
 use super::types;
 use super::types::Benchmark;
 use super::types::BenchmarkType;
 use crate::get_edenfs_instance;
 
-struct TraversalProgress {
+struct InProgressTraversal {
     file_count: usize,
     dir_count: usize,
     symlink_skipped_count: usize,
@@ -38,10 +41,27 @@ struct TraversalProgress {
     file_paths: Vec<PathBuf>,
     total_read_dir_time: std::time::Duration,
     total_dir_entries: usize,
+    max_files: usize,
+    follow_symlinks: bool,
+    system: System,
+    pid: Pid,
 }
 
-impl TraversalProgress {
-    fn new(no_progress: bool) -> Self {
+// Define a struct for the results from the finalize step
+#[derive(Debug)]
+pub struct FinalizedTraversal {
+    file_count: usize,
+    dir_count: usize,
+    symlink_skipped_count: usize,
+    symlink_traversed_count: usize,
+    duration: f64,
+    file_paths: Vec<PathBuf>,
+    total_read_dir_time: std::time::Duration,
+    total_dir_entries: usize,
+}
+
+impl InProgressTraversal {
+    fn new(no_progress: bool, max_files: usize, follow_symlinks: bool) -> Self {
         let progress_bar = if no_progress {
             None
         } else {
@@ -55,6 +75,10 @@ impl TraversalProgress {
             Some(pb)
         };
 
+        let mut system = System::new_all();
+        let pid = sysinfo::get_current_pid().expect("Failed to get current process ID");
+        system.refresh_all();
+
         Self {
             file_count: 0,
             dir_count: 0,
@@ -62,23 +86,27 @@ impl TraversalProgress {
             symlink_traversed_count: 0,
             start_time: Instant::now(),
             progress_bar,
-            file_paths: Vec::new(),
+            file_paths: Vec::with_capacity(max_files),
             total_read_dir_time: std::time::Duration::new(0, 0),
             total_dir_entries: 0,
+            max_files,
+            follow_symlinks,
+            system,
+            pid,
         }
     }
 
     fn add_file(&mut self, path: PathBuf) {
         self.file_count += 1;
         self.file_paths.push(path);
-        if (self.file_count + self.dir_count) % 100 == 0 {
+        if (self.file_count + self.dir_count) % 1000 == 0 {
             self.update_progress();
         }
     }
 
     fn add_dir(&mut self) {
         self.dir_count += 1;
-        if (self.file_count + self.dir_count) % 100 == 0 {
+        if (self.file_count + self.dir_count) % 1000 == 0 {
             self.update_progress();
         }
     }
@@ -102,133 +130,126 @@ impl TraversalProgress {
             if elapsed <= 0.0 {
                 return;
             }
+
+            self.system
+                .refresh_processes(sysinfo::ProcessesToUpdate::Some(&[self.pid]), false);
+
             let files_per_second = self.file_count as f64 / elapsed;
+            let (memory_usage_mb, cpu_usage) = match self.system.process(self.pid) {
+                Some(process) => (
+                    process.memory() as f64 / 1024.0 / 1024.0,
+                    process.cpu_usage(),
+                ),
+                None => (0.0, 0.0),
+            };
+
             pb.set_message(format!(
-                "{} files | {} dirs | {:.0} files/s",
-                self.file_count, self.dir_count, files_per_second
+                "{} files | {} dirs | {:.0} files/s | {:.2} MiB memory usage | {:.2}% CPU usage",
+                self.file_count, self.dir_count, files_per_second, memory_usage_mb, cpu_usage
             ));
         }
     }
 
-    fn finalize(
-        &self,
-    ) -> (
-        usize,
-        usize,
-        usize,
-        usize,
-        f64,
-        &Vec<PathBuf>,
-        std::time::Duration,
-        usize,
-    ) {
+    fn finalize(self) -> FinalizedTraversal {
         let elapsed = self.start_time.elapsed().as_secs_f64();
         if let Some(pb) = &self.progress_bar {
             pb.finish_and_clear();
         }
 
-        (
-            self.file_count,
-            self.dir_count,
-            self.symlink_skipped_count,
-            self.symlink_traversed_count,
-            elapsed,
-            &self.file_paths,
-            self.total_read_dir_time,
-            self.total_dir_entries,
-        )
-    }
-}
-
-/// Recursively traverses a directory and collects file paths, displaying progress
-///
-/// If follow_symlinks is true, symbolic links will be followed during traversal.
-/// Otherwise, symbolic links will be ignored.
-fn traverse_directory(
-    path: &Path,
-    metrics: &mut TraversalProgress,
-    follow_symlinks: bool,
-) -> Result<()> {
-    if path.is_dir() {
-        metrics.add_dir();
-
-        // Measure read_dir latency
-        let start_time = Instant::now();
-        let read_dir_result = fs::read_dir(path);
-        let read_dir_duration = start_time.elapsed();
-
-        let entries = read_dir_result?;
-
-        // Count entries in this directory
-        let entries: Vec<_> = entries.collect::<Result<Vec<_>, _>>()?;
-        let entry_count = entries.len();
-
-        // Add stats for this directory
-        metrics.add_read_dir_stats(read_dir_duration, entry_count);
-
-        for entry in entries {
-            let path = entry.path();
-
-            if path.is_dir() {
-                if path.is_symlink() {
-                    if follow_symlinks {
-                        metrics.add_traversed_symlink();
-                        traverse_directory(&path, metrics, follow_symlinks)?;
-                    } else {
-                        metrics.add_skipped_symlink();
-                    }
-                } else {
-                    // Regular directory, ie, non symlink
-                    traverse_directory(&path, metrics, follow_symlinks)?;
-                }
-            } else if path.is_file() {
-                metrics.add_file(path);
-            }
+        FinalizedTraversal {
+            file_count: self.file_count,
+            dir_count: self.dir_count,
+            symlink_skipped_count: self.symlink_skipped_count,
+            symlink_traversed_count: self.symlink_traversed_count,
+            duration: elapsed,
+            file_paths: self.file_paths,
+            total_read_dir_time: self.total_read_dir_time,
+            total_dir_entries: self.total_dir_entries,
         }
     }
-    Ok(())
+
+    /// Recursively traverses a directory and collects file paths, displaying progress
+    pub fn traverse_path(&mut self, path: &Path) -> Result<()> {
+        if path.is_dir() {
+            self.add_dir();
+
+            // Measure read_dir latency
+            let start_time = Instant::now();
+            let read_dir_result = fs::read_dir(path);
+            let read_dir_duration = start_time.elapsed();
+
+            let entries = read_dir_result?;
+
+            // Count entries in this directory
+            let entries: Vec<_> = entries.collect::<Result<Vec<_>, _>>()?;
+            let entry_count = entries.len();
+
+            // Add stats for this directory
+            self.add_read_dir_stats(read_dir_duration, entry_count);
+
+            for entry in entries {
+                let path = entry.path();
+
+                if path.is_dir() {
+                    if path.is_symlink() {
+                        if self.follow_symlinks {
+                            self.add_traversed_symlink();
+                            self.traverse_path(&path)?;
+                        } else {
+                            self.add_skipped_symlink();
+                        }
+                    } else {
+                        // Regular directory, ie, non symlink
+                        self.traverse_path(&path)?;
+                    }
+                } else if path.is_file() {
+                    if self.file_count < self.max_files {
+                        self.add_file(path);
+                    } else {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 pub async fn bench_traversal_thrift_read(
     dir_path: &str,
+    max_files: usize,
     follow_symlinks: bool,
     no_progress: bool,
+    fbsource_path: Option<&str>,
 ) -> Result<Benchmark> {
     let path = Path::new(dir_path);
     if !path.exists() || !path.is_dir() {
         return Err(anyhow::anyhow!("Invalid directory path: {}", dir_path));
     }
 
-    let mut traverse_progress = TraversalProgress::new(no_progress);
-    traverse_directory(path, &mut traverse_progress, follow_symlinks)?;
-    let (
-        file_count,
-        dir_count,
-        symlink_skipped_count,
-        symlink_traversed_count,
-        duration,
-        file_paths,
-        total_read_dir_time,
-        total_dir_entries,
-    ) = traverse_progress.finalize();
+    let mut in_progress_traversal =
+        InProgressTraversal::new(no_progress, max_files, follow_symlinks);
+    in_progress_traversal.traverse_path(path)?;
 
-    let avg_read_dir_latency = if dir_count > 0 {
-        total_read_dir_time.as_secs_f64() * 1000.0 / dir_count as f64
+    let ft = in_progress_traversal.finalize();
+
+    let avg_read_dir_latency = if ft.dir_count > 0 {
+        ft.total_read_dir_time.as_secs_f64() * 1000.0 / ft.dir_count as f64
     } else {
         0.0
     };
 
-    let avg_dir_size = if dir_count > 0 {
-        total_dir_entries as f64 / dir_count as f64
+    let avg_dir_size = if ft.dir_count > 0 {
+        ft.total_dir_entries as f64 / ft.dir_count as f64
     } else {
         0.0
     };
 
-    if duration <= 0.0 {
+    if ft.duration <= 0.0 {
         return Err(anyhow::anyhow!("Duration is less or equal to zero."));
     }
 
-    let files_per_second = file_count as f64 / duration;
+    let files_per_second = ft.file_count as f64 / ft.duration;
 
     let mut result = Benchmark::new(BenchmarkType::FsTraversal);
 
@@ -252,13 +273,13 @@ pub async fn bench_traversal_thrift_read(
     );
     result.add_metric(
         "Total files",
-        file_count as f64,
+        ft.file_count as f64,
         types::Unit::Files,
         Some(0),
     );
     result.add_metric(
         "Total directories",
-        dir_count as f64,
+        ft.dir_count as f64,
         types::Unit::Dirs,
         Some(0),
     );
@@ -266,7 +287,7 @@ pub async fn bench_traversal_thrift_read(
     let read_progress = if no_progress {
         None
     } else {
-        let pb = ProgressBar::new(file_count as u64);
+        let pb = ProgressBar::new(ft.file_count as u64);
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("[{elapsed_precise}] {pos}/{len} files | {msg}")
@@ -280,7 +301,7 @@ pub async fn bench_traversal_thrift_read(
     let mut successful_reads = 0;
 
     let client = get_edenfs_instance().get_client();
-    for path in file_paths {
+    for path in ft.file_paths {
         if !path.is_file() {
             if let Some(pb) = &read_progress {
                 pb.inc(1);
@@ -289,7 +310,27 @@ pub async fn bench_traversal_thrift_read(
         }
 
         let start = Instant::now();
-        let (repo_path, rel_file_path) = split_fbsource_file_path(path);
+        let fbsource_path = fbsource_path
+            .ok_or_else(|| anyhow::anyhow!("fbsource path is required for thrift IO"))?;
+
+        // Convert both paths to absolute paths
+        let repo_path = PathBuf::from(fbsource_path)
+            .canonicalize()
+            .map_err(|e| anyhow::anyhow!("Failed to canonicalize fbsource path: {}", e))?;
+        let abs_path = path
+            .canonicalize()
+            .map_err(|e| anyhow::anyhow!("Failed to canonicalize file path: {}", e))?;
+
+        // Now strip the prefix using absolute paths
+        let rel_file_path = abs_path
+            .strip_prefix(&repo_path)
+            .map_err(|_| {
+                anyhow::anyhow!(
+                    "File path does not start with fbsource path (after canonicalization)"
+                )
+            })?
+            .to_path_buf();
+
         let request = get_thrift_request(repo_path, rel_file_path)?;
         let response = client
             .with_thrift(|thrift| {
@@ -369,6 +410,7 @@ pub async fn bench_traversal_thrift_read(
 /// Runs the filesystem traversal benchmark and returns the benchmark results
 pub fn bench_traversal_fs_read(
     dir_path: &str,
+    max_files: usize,
     follow_symlinks: bool,
     no_progress: bool,
 ) -> Result<Benchmark> {
@@ -377,38 +419,30 @@ pub fn bench_traversal_fs_read(
         return Err(anyhow::anyhow!("Invalid directory path: {}", dir_path));
     }
 
-    let mut traverse_progress = TraversalProgress::new(no_progress);
+    let mut in_progress_traversal =
+        InProgressTraversal::new(no_progress, max_files, follow_symlinks);
 
-    traverse_directory(path, &mut traverse_progress, follow_symlinks)?;
+    in_progress_traversal.traverse_path(path)?;
 
-    let (
-        file_count,
-        dir_count,
-        symlink_skipped_count,
-        symlink_traversed_count,
-        duration,
-        file_paths,
-        total_read_dir_time,
-        total_dir_entries,
-    ) = traverse_progress.finalize();
+    let ft = in_progress_traversal.finalize();
 
-    let avg_read_dir_latency = if dir_count > 0 {
-        total_read_dir_time.as_secs_f64() * 1000.0 / dir_count as f64
+    let avg_read_dir_latency = if ft.dir_count > 0 {
+        ft.total_read_dir_time.as_secs_f64() * 1000.0 / ft.dir_count as f64
     } else {
         0.0
     };
 
-    let avg_dir_size = if dir_count > 0 {
-        total_dir_entries as f64 / dir_count as f64
+    let avg_dir_size = if ft.dir_count > 0 {
+        ft.total_dir_entries as f64 / ft.dir_count as f64
     } else {
         0.0
     };
 
-    if duration <= 0.0 {
+    if ft.duration <= 0.0 {
         return Err(anyhow::anyhow!("Duration is less or equal to zero."));
     }
 
-    let files_per_second = file_count as f64 / duration;
+    let files_per_second = ft.file_count as f64 / ft.duration;
 
     let mut result = Benchmark::new(BenchmarkType::FsTraversal);
 
@@ -432,25 +466,25 @@ pub fn bench_traversal_fs_read(
     );
     result.add_metric(
         "Total files",
-        file_count as f64,
+        ft.file_count as f64,
         types::Unit::Files,
         Some(0),
     );
     result.add_metric(
         "Total symlinks skipped",
-        symlink_skipped_count as f64,
+        ft.symlink_skipped_count as f64,
         types::Unit::Symlinks,
         Some(0),
     );
     result.add_metric(
         "Total symlinks traversed",
-        symlink_traversed_count as f64,
+        ft.symlink_traversed_count as f64,
         types::Unit::Symlinks,
         Some(0),
     );
     result.add_metric(
         "Total directories",
-        dir_count as f64,
+        ft.dir_count as f64,
         types::Unit::Dirs,
         Some(0),
     );
@@ -458,7 +492,7 @@ pub fn bench_traversal_fs_read(
     let read_progress = if no_progress {
         None
     } else {
-        let pb = ProgressBar::new(file_count as u64);
+        let pb = ProgressBar::new(ft.file_count as u64);
         pb.set_style(
             ProgressStyle::default_bar()
                 .template("[{elapsed_precise}] {pos}/{len} files | {msg}")
@@ -471,9 +505,9 @@ pub fn bench_traversal_fs_read(
     let mut agg_read_dur = std::time::Duration::new(0, 0);
     let mut total_bytes_read: u64 = 0;
     let mut successful_reads = 0;
-    let mut buffer = Vec::new();
+    let mut buffer = Vec::with_capacity(types::BYTES_IN_MEGABYTE);
 
-    for path in file_paths {
+    for path in ft.file_paths {
         if !path.is_file() {
             if let Some(pb) = &read_progress {
                 pb.inc(1);
@@ -499,6 +533,7 @@ pub fn bench_traversal_fs_read(
             successful_reads += 1;
         }
         agg_read_dur += start.elapsed();
+        buffer.clear();
         if let Some(pb) = &read_progress {
             pb.inc(1);
         }
@@ -563,4 +598,22 @@ pub fn bench_traversal_fs_read(
     );
 
     Ok(result)
+}
+
+pub fn get_thrift_request(
+    repo_path: PathBuf,
+    rel_file_path: PathBuf,
+) -> Result<thrift_types::edenfs::GetFileContentRequest> {
+    let req = thrift_types::edenfs::GetFileContentRequest {
+        mount: MountId {
+            mountPoint: bytes_from_path(repo_path)?,
+            ..Default::default()
+        },
+        filePath: bytes_from_path(rel_file_path)?,
+        sync: SyncBehavior {
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+    Ok(req)
 }

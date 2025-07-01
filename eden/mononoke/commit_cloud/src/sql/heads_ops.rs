@@ -51,8 +51,13 @@ mononoke_queries! {
 #[async_trait]
 impl Get<WorkspaceHead> for SqlCommitCloud {
     async fn get(&self, reponame: String, workspace: String) -> anyhow::Result<Vec<WorkspaceHead>> {
-        let rows =
-            GetHeads::query(&self.connections.read_connection, &reponame, &workspace).await?;
+        let rows = GetHeads::query(
+            &self.connections.read_connection,
+            None,
+            &reponame,
+            &workspace,
+        )
+        .await?;
         rows.into_iter()
             .map(|(_reponame, commit)| Ok(WorkspaceHead { commit }))
             .collect::<anyhow::Result<Vec<WorkspaceHead>>>()
@@ -69,14 +74,9 @@ impl Insert<WorkspaceHead> for SqlCommitCloud {
         workspace: String,
         data: WorkspaceHead,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = InsertHead::maybe_traced_query_with_transaction(
-            txn,
-            cri,
-            &reponame,
-            &workspace,
-            &data.commit,
-        )
-        .await?;
+        let (txn, _) =
+            InsertHead::query_with_transaction(txn, cri, &reponame, &workspace, &data.commit)
+                .await?;
         Ok(txn)
     }
 }
@@ -91,7 +91,7 @@ impl Update<WorkspaceHead> for SqlCommitCloud {
         cc_ctx: CommitCloudContext,
         args: Self::UpdateArgs,
     ) -> anyhow::Result<(Transaction, u64)> {
-        let (txn, result) = UpdateWorkspaceName::maybe_traced_query_with_transaction(
+        let (txn, result) = UpdateWorkspaceName::query_with_transaction(
             txn,
             cri,
             &cc_ctx.reponame,
@@ -114,7 +114,7 @@ impl Delete<WorkspaceHead> for SqlCommitCloud {
         workspace: String,
         args: Self::DeleteArgs,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = DeleteHead::maybe_traced_query_with_transaction(
+        let (txn, _) = DeleteHead::query_with_transaction(
             txn,
             cri,
             &reponame,

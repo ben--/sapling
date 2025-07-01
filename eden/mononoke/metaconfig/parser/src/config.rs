@@ -1303,8 +1303,8 @@ mod test {
                             DerivableType::Fsnodes => 20,
                             DerivableType::Unodes => 20,
                             DerivableType::BlameV2 => 20,
-                        }
-
+                        },
+                        inferred_copy_from_config: Default::default(),
                     },],
                     scuba_table: None,
                     derivation_queue_scuba_table: None,
@@ -1864,41 +1864,6 @@ mod test {
             "Got: {:#?}\nWant: {:#?}",
             &res.repos, expected
         )
-    }
-
-    #[mononoke::test]
-    fn test_stray_fields() {
-        const REPO: &str = r#"
-        storage_config = "randomstore"
-
-        [storage.randomstore.metadata.remote]
-        primary = { db_address = "other_other_db" }
-
-        [storage.randomstore.blobstore.blob_files]
-        path = "/tmp/foo"
-
-        # Should be above
-        readonly = true
-        "#;
-
-        const REPO_DEF: &str = r#"
-         repo_id = 123
-         readonly = true
-         "#;
-
-        let paths = btreemap! {
-            "common/commitsyncmap.toml" => "",
-            "repos/test/server.toml" => REPO,
-            "repo_definitions/test/server.toml" => REPO_DEF,
-        };
-
-        let config_store = ConfigStore::new(Arc::new(TestSource::new()), None, None);
-        let tmp_dir = write_files(&paths);
-        let res = load_repo_configs(tmp_dir.path(), &config_store);
-        let msg = format!("{:#?}", res);
-        println!("res = {}", msg);
-        assert!(res.is_err());
-        assert!(msg.contains("unknown keys in config parsing"));
     }
 
     #[mononoke::test]

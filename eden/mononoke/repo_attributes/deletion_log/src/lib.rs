@@ -206,7 +206,7 @@ impl SqlDeletionLog {
                             (&repo_id, cs_id, blob_key, &reason, &stage, &timestamp)
                         })
                         .collect::<Vec<_>>();
-                    InsertCandidate::query(&self.write_connection, v.as_slice()).await
+                    InsertCandidate::query(&self.write_connection, None, v.as_slice()).await
                 }
             })
             .try_fold(0, |acc, res| async move { Ok(acc + res.affected_rows()) })
@@ -266,7 +266,7 @@ impl SqlDeletionLog {
                             (&repo_id, cs_id, blob_key, &reason, &stage, &timestamp)
                         })
                         .collect::<Vec<_>>();
-                    UpdateCandidate::query(&self.write_connection, v.as_slice()).await
+                    UpdateCandidate::query(&self.write_connection, None, v.as_slice()).await
                 }
             })
             .try_fold(0, |acc, res| async move { Ok(acc + res.affected_rows()) })
@@ -278,7 +278,8 @@ impl SqlDeletionLog {
         repo_id: RepositoryId,
         reason: String,
     ) -> Result<Vec<(ChangesetId, String, DeletionStage)>> {
-        let blobs = GetBlobKeysForRequest::query(&self.read_connection, &repo_id, &reason).await?;
+        let blobs =
+            GetBlobKeysForRequest::query(&self.read_connection, None, &repo_id, &reason).await?;
         blobs
             .into_iter()
             .map(|(cs_id, blob, stage)| Ok((cs_id, blob, DeletionStage::from_str(&stage)?)))
@@ -291,7 +292,8 @@ impl SqlDeletionLog {
         reason: String,
         stage: String,
     ) -> Result<Vec<(ChangesetId, String)>> {
-        GetBlobKeysForRequestAndStage::query(&self.read_connection, &repo_id, &reason, &stage).await
+        GetBlobKeysForRequestAndStage::query(&self.read_connection, None, &repo_id, &reason, &stage)
+            .await
     }
 }
 

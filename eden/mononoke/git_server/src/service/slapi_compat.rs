@@ -55,7 +55,7 @@ where
         route
             .request(
                 vec![Handler::HTTP_METHOD],
-                &format!("/edenapi/:repo{}", Handler::ENDPOINT),
+                &format!("/edenapi/*repo{}", Handler::ENDPOINT),
             )
             .with_path_extractor::<Handler::PathExtractor>()
             .with_query_string_extractor::<Handler::QueryStringExtractor>()
@@ -119,6 +119,7 @@ where
     }
     .timed()
     .await;
+
     ScubaMiddlewareState::try_set_future_stats(&mut state, &future_stats);
 
     build_response(res, state, &JsonErrorFomatter)

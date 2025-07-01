@@ -9,16 +9,16 @@ license = "GPLv2+"
 
 [dependencies]
 acl_regions = { version = "0.1.0", path = "../acl_regions" }
-anyhow = "1.0.95"
+anyhow = "1.0.98"
 bookmarks = { version = "0.1.0", path = "../bookmarks" }
 commit_cloud = { version = "0.1.0", path = "../commit_cloud" }
 commit_cloud_helpers = { version = "0.1.0", path = "../commit_cloud/helpers" }
 context = { version = "0.1.0", path = "../server/context" }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 metaconfig_types = { version = "0.1.0", path = "../metaconfig/types" }
 mononoke_types = { version = "0.1.0", path = "../mononoke_types" }
 permission_checker = { version = "0.1.0", path = "../permission_checker" }
 repo_bookmark_attrs = { version = "0.1.0", path = "../repo_attributes/repo_bookmark_attrs" }
+repo_identity = { version = "0.1.0", path = "../repo_attributes/repo_identity" }
 repo_permission_checker = { version = "0.1.0", path = "../repo_attributes/repo_permission_checker" }
 thiserror = "2.0.12"
 

@@ -115,7 +115,7 @@ impl TransactionRepoLock {
         &self,
         txn: Transaction,
     ) -> Result<(Transaction, RepoLockState), Error> {
-        let (txn, row) = GetRepoLockStatus::query_with_transaction(txn, &self.repo_id)
+        let (txn, row) = GetRepoLockStatus::query_with_transaction(txn, None, &self.repo_id)
             .await
             .context("Failed to query repo lock status")?;
 
@@ -145,16 +145,17 @@ impl MutableRepoLock {
 #[async_trait]
 impl RepoLock for MutableRepoLock {
     async fn check_repo_lock(&self) -> Result<RepoLockState, Error> {
-        let row = GetRepoLockStatus::query(&self.sql_repo_lock.read_connection, &self.repo_id)
-            .await
-            .context("Failed to query repo lock status")?;
+        let row =
+            GetRepoLockStatus::query(&self.sql_repo_lock.read_connection, None, &self.repo_id)
+                .await
+                .context("Failed to query repo lock status")?;
 
         row.first()
             .map_or(Ok(RepoLockState::Unlocked), convert_sql_state)
     }
 
     async fn all_repos_lock(&self) -> Result<HashMap<RepositoryId, RepoLockState>, Error> {
-        let rows = AllReposLockStatus::query(&self.sql_repo_lock.read_connection)
+        let rows = AllReposLockStatus::query(&self.sql_repo_lock.read_connection, None)
             .await
             .context("Failed to query repo lock status")?;
 
@@ -171,6 +172,7 @@ impl RepoLock for MutableRepoLock {
 
         SetRepoLockStatus::query(
             &self.sql_repo_lock.write_connection,
+            None,
             &self.repo_id,
             &state,
             &reason.as_deref(),
@@ -256,6 +258,7 @@ mod test {
 
         InsertState::query(
             &repo_lock.sql_repo_lock.clone().write_connection,
+            None,
             &repo_id,
             &1,
             &Some("reason"),

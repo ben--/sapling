@@ -55,8 +55,13 @@ impl Get<WorkspaceSnapshot> for SqlCommitCloud {
         reponame: String,
         workspace: String,
     ) -> anyhow::Result<Vec<WorkspaceSnapshot>> {
-        let rows =
-            GetSnapshots::query(&self.connections.read_connection, &reponame, &workspace).await?;
+        let rows = GetSnapshots::query(
+            &self.connections.read_connection,
+            None,
+            &reponame,
+            &workspace,
+        )
+        .await?;
         rows.into_iter()
             .map(|(_reponame, commit)| Ok(WorkspaceSnapshot { commit }))
             .collect::<anyhow::Result<Vec<WorkspaceSnapshot>>>()
@@ -72,14 +77,9 @@ impl Insert<WorkspaceSnapshot> for SqlCommitCloud {
         workspace: String,
         data: WorkspaceSnapshot,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = InsertSnapshot::maybe_traced_query_with_transaction(
-            txn,
-            cri,
-            &reponame,
-            &workspace,
-            &data.commit,
-        )
-        .await?;
+        let (txn, _) =
+            InsertSnapshot::query_with_transaction(txn, cri, &reponame, &workspace, &data.commit)
+                .await?;
         Ok(txn)
     }
 }
@@ -94,7 +94,7 @@ impl Update<WorkspaceSnapshot> for SqlCommitCloud {
         cc_ctx: CommitCloudContext,
         args: Self::UpdateArgs,
     ) -> anyhow::Result<(Transaction, u64)> {
-        let (txn, result) = UpdateWorkspaceName::maybe_traced_query_with_transaction(
+        let (txn, result) = UpdateWorkspaceName::query_with_transaction(
             txn,
             cri,
             &cc_ctx.reponame,
@@ -117,7 +117,7 @@ impl Delete<WorkspaceSnapshot> for SqlCommitCloud {
         workspace: String,
         args: Self::DeleteArgs,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = DeleteSnapshot::maybe_traced_query_with_transaction(
+        let (txn, _) = DeleteSnapshot::query_with_transaction(
             txn,
             cri,
             &reponame,

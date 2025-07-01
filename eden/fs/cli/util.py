@@ -414,8 +414,7 @@ class HgRepo(Repo):
         out_bytes = subprocess.check_output(
             cmd, cwd=self.working_dir, env=self._env, stderr=stderr_output
         )
-        # pyre-fixme[22]: The cast is redundant.
-        out = typing.cast(bytes, out_bytes)
+        out = out_bytes
         return out
 
     # pyre-fixme[2]: Parameter must be annotated.
@@ -435,8 +434,7 @@ class GitRepo(Repo):
 
     def _run_git(self, args: List[str]) -> bytes:
         cmd = ["git"] + args
-        # pyre-fixme[22]: The cast is redundant.
-        out = typing.cast(bytes, subprocess.check_output(cmd, cwd=self.source))
+        out = subprocess.check_output(cmd, cwd=self.source)
         return out
 
     def get_commit_hash(self, commit: str) -> str:
@@ -457,7 +455,7 @@ class ReCasRepo(Repo):
 
     def get_commit_hash(self, commit: str) -> str:
         raise NotImplementedError(
-            "get_comit_hash is not supposed to be called for ReCasRepo"
+            "get_commit_hash is not supposed to be called for ReCasRepo"
         )
 
 
@@ -700,7 +698,7 @@ def format_cmd(cmd: bytes) -> str:
     args = os.fsdecode(cmd)
 
     # remove trailing null which would cause the command to show up with an
-    # exta empty string on the end
+    # extra empty string on the end
     args = re.sub("\x00$", "", args)
 
     args = args.split("\x00")

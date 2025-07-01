@@ -298,7 +298,9 @@ RocksDbLocalStore::RocksDbLocalStore(
     : LocalStore{std::move(edenStats)},
       structuredLogger_{std::move(structuredLogger)},
       faultInjector_(*faultInjector),
-      ioPool_(12, "RocksLocalStore"),
+      ioPool_(
+          config->getEdenConfig()->rocksDbIoPoolNumThreads.getValue(),
+          "RocksLocalStore"),
       pathToDb_{pathToRocksDb.copy()},
       mode_{mode},
       config_{std::move(config)},
@@ -384,9 +386,9 @@ RocksDbLocalStore::getHandles() const {
 
 void RocksDbLocalStore::repairDB(AbsolutePathPiece path) {
   XLOGF(ERR, "Attempting to repair RocksDB at path: {}", path);
-  rocksdb::ColumnFamilyOptions unknownColumFamilyOptions;
-  unknownColumFamilyOptions.OptimizeForPointLookup(8);
-  unknownColumFamilyOptions.OptimizeLevelStyleCompaction();
+  rocksdb::ColumnFamilyOptions unknownColumnFamilyOptions;
+  unknownColumnFamilyOptions.OptimizeForPointLookup(8);
+  unknownColumnFamilyOptions.OptimizeLevelStyleCompaction();
 
   auto dbPathStr = path.stringWithoutUNC();
   rocksdb::DBOptions dbOptions(getRocksdbOptions());
@@ -395,7 +397,7 @@ void RocksDbLocalStore::repairDB(AbsolutePathPiece path) {
       columnFamilies(dbOptions, path.stringWithoutUNC());
 
   auto status = RepairDB(
-      dbPathStr, dbOptions, columnDescriptors, unknownColumFamilyOptions);
+      dbPathStr, dbOptions, columnDescriptors, unknownColumnFamilyOptions);
   if (!status.ok()) {
     throw RocksException::build(status, "unable to repair RocksDB at ", path);
   }

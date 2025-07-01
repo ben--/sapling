@@ -24,8 +24,8 @@ use observability::ObservabilityContext;
 use observability::ScubaLoggingDecisionFields;
 pub use observability::ScubaVerbosityLevel;
 use permission_checker::MononokeIdentitySetExt;
+pub use sampling::Sampling;
 pub use scribe_ext::ScribeClientImplementation;
-pub use scuba::Sampling;
 use scuba::ScubaSample;
 use scuba::ScubaSampleBuilder;
 pub use scuba::ScubaValue;
@@ -118,12 +118,13 @@ impl MononokeScubaSampleBuilder {
     pub fn should_log_with_level(&self, level: ScubaVerbosityLevel) -> bool {
         match level {
             ScubaVerbosityLevel::Normal => true,
-            ScubaVerbosityLevel::Verbose => self
-                .maybe_observability_context
-                .as_ref()
-                .map_or(false, |octx| {
-                    octx.should_log_scuba_sample(level, self.get_logging_decision_fields())
-                }),
+            ScubaVerbosityLevel::Verbose => {
+                self.maybe_observability_context
+                    .as_ref()
+                    .is_some_and(|octx| {
+                        octx.should_log_scuba_sample(level, self.get_logging_decision_fields())
+                    })
+            }
         }
     }
 
@@ -139,6 +140,27 @@ impl MononokeScubaSampleBuilder {
             .add("client_entry_point", client_info.entry_point.to_string());
         self.inner
             .add("client_correlator", client_info.correlator.as_str());
+
+        // For context, see D76895703 or https://fburl.com/workplace/et4ezqp3.
+        // Check the JK that disables reads for all blobstore ids being used
+        // and log the ones that were disabled in this request.
+        let disabled_reads_blobstore_ids = (1..4)
+            .map(|id| id.to_string())
+            .filter(|id| {
+                justknobs::eval(
+                    "scm/mononoke:disable_blobstore_reads",
+                    Some(client_info.correlator.as_str()),
+                    Some(id),
+                )
+                .unwrap_or(false)
+            })
+            .collect::<Vec<_>>();
+
+        if !disabled_reads_blobstore_ids.is_empty() {
+            self.inner
+                .add("disabled_reads_blobstore_ids", disabled_reads_blobstore_ids);
+        }
+
         self
     }
 

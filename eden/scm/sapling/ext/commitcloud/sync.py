@@ -16,6 +16,7 @@ from sapling import (
     blackbox,
     bookmarks,
     error,
+    git,
     hg,
     hintutil,
     node as nodemod,
@@ -52,10 +53,11 @@ def _isremotebookmarkssyncenabled(ui):
 
 
 def _getheads(repo):
-    if visibility.enabled(repo):
+    if visibility.enabled(repo) and not git.isgitformat(repo):
         # Visible heads can contain public heads in some cases due to a known issue.
         # TODO (liubovd): remove the filter once the issue is fixed.
-        return [nodemod.hex(n) for n in visibility.heads(repo) if repo[n].mutable()]
+        heads = [nodemod.hex(n) for n in visibility.heads(repo) if repo[n].mutable()]
+        return heads
     else:
         # Select the commits to sync.  To match previous behaviour, this is
         # all draft but not obsolete commits, plus any bookmarked commits,
@@ -104,9 +106,9 @@ def _iscleanrepo(repo):
 
 @perftrace.tracefunc("Cloud Sync")
 def sync(repo, *args, **kwargs):
-    with backuplock.lock(repo):
-        try:
-            besteffort = kwargs.get("besteffort", False)
+    besteffort = kwargs.get("besteffort", False)
+    try:
+        with backuplock.trylock(repo) if besteffort else backuplock.lock(repo):
             if besteffort:
                 rc, synced = _sync(repo, *args, **kwargs)
             else:
@@ -119,14 +121,14 @@ def sync(repo, *args, **kwargs):
             if synced is not None:
                 with repo.svfs(_syncstatusfile, "w+") as fp:
                     fp.write(("Success" if synced else "Failed").encode())
-        except BaseException as e:
-            with repo.svfs(_syncstatusfile, "w+") as fp:
-                fp.write(("Exception:\n%s" % e).encode())
-            raise
-        return rc
+    except BaseException as e:
+        with repo.svfs(_syncstatusfile, "w+") as fp:
+            fp.write(("Exception:\n%s" % e).encode())
+        raise
+    return rc
 
 
-def _hashrepostate(repo) -> bytes:
+def _hashrepostate(repo, besteffort=False) -> bytes:
     """hash repo states that affect commit cloud sync
 
     Those states are bookmarks, remotenames, visibleheads, as they are synced
@@ -137,7 +139,11 @@ def _hashrepostate(repo) -> bytes:
     The hash is used to detect repo changes.
     """
     buf = []
-    with repo.wlock(), repo.lock(), repo.transaction("cloudsyncmetalog"):
+    with (
+        repo.wlock(wait=not besteffort),
+        repo.lock(wait=not besteffort),
+        repo.transaction("cloudsyncmetalog"),
+    ):
         ml = repo.metalog()
     for key in ["bookmarks", "remotenames", "visibleheads"]:
         buf.append(ml.get(key) or b"")
@@ -195,7 +201,7 @@ def _sync(
     # Connect to the commit cloud service.
     serv = service.get(ui, repo)
 
-    origrepostate = _hashrepostate(repo)
+    origrepostate = _hashrepostate(repo, besteffort)
 
     remotepath = ccutil.getremotepath(ui)
 
@@ -228,8 +234,8 @@ def _sync(
         repo.ui.configoverride(
             {("treemanifest", "prefetchdraftparents"): False}, "cloudsync"
         ),
-        repo.wlock(),
-        repo.lock(),
+        repo.wlock(wait=not besteffort),
+        repo.lock(wait=not besteffort),
     ):
         synced = False
         attempt = 0
@@ -241,7 +247,7 @@ def _sync(
             attempt += 1
 
             with repo.transaction("cloudsync") as tr:
-                if besteffort and _hashrepostate(repo) != origrepostate:
+                if besteffort and _hashrepostate(repo, besteffort) != origrepostate:
                     # Another transaction changed the repository while we were backing
                     # up commits. This may have introduced new commits that also need
                     # backing up.  That transaction should have started its own sync

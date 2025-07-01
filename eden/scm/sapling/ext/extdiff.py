@@ -72,8 +72,10 @@ import shutil
 import tempfile
 
 from sapling import archival, cmdutil, error, filemerge, registrar, scmutil, util
+from sapling.commands import subtree
 from sapling.i18n import _
 from sapling.node import nullid, short
+from sapling.utils import subtreeutil
 
 cmdtable = {}
 command = registrar.command(cmdtable)
@@ -86,15 +88,16 @@ command = registrar.command(cmdtable)
 testedwith = "ships-with-hg-core"
 
 
-def snapshot(ui, repo, files, node, tmproot):
+def snapshot(ui, repo, files, ctx, tmproot, postfix):
     """snapshot files as of some revision
     if not using snapshot, -I/-X does not work and recursive diff
     in tools like kdiff3 and meld displays too many files."""
     dirname = os.path.basename(repo.root)
     if dirname == "":
         dirname = "root"
+    node = ctx.node()
     if node is not None:
-        dirname = "%s.%s" % (dirname, short(node))
+        dirname = "%s.%s.%s" % (dirname, short(node), postfix)
     base = os.path.join(tmproot, dirname)
     os.mkdir(base)
     fnsandstat = []
@@ -112,7 +115,7 @@ def snapshot(ui, repo, files, node, tmproot):
         repo.ui.setconfig("ui", "archivemeta", False)
 
         archival.archive(
-            repo, base, node, "files", matchfn=scmutil.matchfiles(repo, files)
+            repo, base, ctx, "files", matchfn=scmutil.matchfiles(repo, files)
         )
 
         for fn in sorted(files):
@@ -126,7 +129,7 @@ def snapshot(ui, repo, files, node, tmproot):
     return dirname, fnsandstat
 
 
-def dodiff(ui, repo, cmdline, pats, opts):
+def dodiff(ui, repo, cmdline, is_subtree, pats, opts):
     """Do the actual diff:
 
     - copy to a temp structure if diffing 2 internal revisions
@@ -157,13 +160,24 @@ def dodiff(ui, repo, cmdline, pats, opts):
         if node1b == nullid:
             do3way = False
 
-    matcher = scmutil.match(repo[node2], pats, opts)
+    ctx1a, ctx1b, ctx2 = repo[node1a], repo[node1b], repo[node2]
+    if is_subtree:
+        if do3way:
+            raise error.Abort(_("3-way diff is not supported for subtree extdiff"))
+
+        from_paths = scmutil.rootrelpaths(ctx2, opts.get("from_path", []))
+        to_paths = scmutil.rootrelpaths(ctx2, opts.get("to_path", []))
+        subtreeutil.validate_path_exist(ui, ctx1a, from_paths, abort_on_missing=True)
+        subtreeutil.validate_path_exist(ui, ctx2, to_paths, abort_on_missing=True)
+        cmdutil.registerdiffgrafts(from_paths, to_paths, ctx1a)
+
+    matcher = scmutil.match(ctx2, pats, opts)
 
     if opts.get("patch"):
         if node2 is None:
             raise error.Abort(_("--patch requires two revisions"))
     else:
-        mod_a, add_a, rem_a = list(map(set, repo.status(node1a, node2, matcher)[:3]))
+        mod_a, add_a, rem_a = list(map(set, ctx1a.status(node2, matcher)[:3]))
         if do3way:
             mod_b, add_b, rem_b = list(
                 map(set, repo.status(node1b, node2, matcher)[:3])
@@ -180,12 +194,14 @@ def dodiff(ui, repo, cmdline, pats, opts):
         if not opts.get("patch"):
             # Always make a copy of node1a (and node1b, if applicable)
             dir1a_files = mod_a | rem_a | ((mod_b | add_b) - add_a)
-            dir1a = snapshot(ui, repo, dir1a_files, node1a, tmproot)[0]
-            rev1a = "@%d" % repo[node1a].rev()
+            ma1a = ctx1a.manifest()
+            dir1a_files = [ma1a.ungraftedpath(f) or f for f in dir1a_files]
+            dir1a = snapshot(ui, repo, dir1a_files, ctx1a, tmproot, "1a")[0]
+            rev1a = "@%d" % ctx1a.rev()
             if do3way:
                 dir1b_files = mod_b | rem_b | ((mod_a | add_a) - add_b)
-                dir1b = snapshot(ui, repo, dir1b_files, node1b, tmproot)[0]
-                rev1b = "@%d" % repo[node1b].rev()
+                dir1b = snapshot(ui, repo, dir1b_files, ctx1b, tmproot, "1b")[0]
+                rev1b = "@%d" % ctx1b.rev()
             else:
                 dir1b = None
                 rev1b = ""
@@ -196,14 +212,14 @@ def dodiff(ui, repo, cmdline, pats, opts):
             dir2root = ""
             rev2 = ""
             if node2:
-                dir2 = snapshot(ui, repo, modadd, node2, tmproot)[0]
-                rev2 = "@%d" % repo[node2].rev()
+                dir2 = snapshot(ui, repo, modadd, ctx2, tmproot, "2")[0]
+                rev2 = "@%d" % ctx2.rev()
             elif len(common) > 1:
                 # we only actually need to get the files to copy back to
                 # the working dir in this case (because the other cases
                 # are: diffing 2 revisions or single file -- in which case
                 # the file is already directly passed to the diff tool).
-                dir2, fnsandstat = snapshot(ui, repo, modadd, None, tmproot)
+                dir2, fnsandstat = snapshot(ui, repo, modadd, repo[None], tmproot, "2")
             else:
                 # This lets the diff tool open the changed file directly
                 dir2 = ""
@@ -340,7 +356,7 @@ def extdiff(ui, repo, *pats, **opts):
         program = "diff"
         option = option or ["-Npru"]
     cmdline = " ".join(map(util.shellquote, [program] + option))
-    return dodiff(ui, repo, cmdline, pats, opts)
+    return dodiff(ui, repo, cmdline, False, pats, opts)
 
 
 class savedcmd:
@@ -358,18 +374,19 @@ class savedcmd:
     to its parent.
     """
 
-    def __init__(self, path, cmdline):
+    def __init__(self, path, cmdline, is_subtree):
         # We can't pass non-ASCII through docstrings (and path is
         # in an unknown encoding anyway)
         docpath = util.escapestr(path)
         self.__doc__ = self.__doc__ % {"path": util.uirepr(docpath)}
         self._cmdline = cmdline
+        self._is_subtree = is_subtree
 
     def __call__(self, ui, repo, *pats, **opts):
         options = " ".join(map(util.shellquote, opts["option"]))
         if options:
             options = " " + options
-        return dodiff(ui, repo, self._cmdline + options, pats, opts)
+        return dodiff(ui, repo, self._cmdline + options, self._is_subtree, pats, opts)
 
 
 def uisetup(ui):
@@ -411,7 +428,13 @@ def uisetup(ui):
             extdiffopts[:],
             _("@prog@ %s [OPTION]... [FILE]...") % cmd,
             inferrepo=True,
-        )(savedcmd(path, cmdline))
+        )(savedcmd(path, cmdline, False))
+
+        subtree.subtree_subcmd(
+            cmd,
+            extdiffopts[:] + cmdutil.subtree_path_opts,
+            _("@prog@ subtree %s [OPTION]... [FILE]...") % cmd,
+        )(savedcmd(path, cmdline, True))
 
 
 # tell hggettext to extract docstrings from these functions:

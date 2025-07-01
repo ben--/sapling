@@ -424,6 +424,7 @@ async fn select_partial_filenode(
 
     let rows = enforce_sql_timeout(SelectFilenode::query(
         connection,
+        None,
         &repo_id,
         &pwh.hash,
         pwh.sql_is_tree(),
@@ -493,6 +494,7 @@ async fn select_partial_history(
         Some(limit) => {
             let rows = enforce_sql_timeout(SelectLimitedFilenodes::query(
                 connection,
+                None,
                 &repo_id,
                 &pwh.hash,
                 pwh.sql_is_tree(),
@@ -508,6 +510,7 @@ async fn select_partial_history(
         None => {
             enforce_sql_timeout(SelectAllFilenodes::query(
                 connection,
+                None,
                 &repo_id,
                 &pwh.hash,
                 pwh.sql_is_tree(),
@@ -628,7 +631,7 @@ async fn select_paths<I: Iterator<Item = PathHashBytes>>(
                 let connection = connections.checkout_by_shard_id(shard_id, AcquireReason::Paths);
 
                 let output =
-                    enforce_sql_timeout(SelectPaths::query(connection, &repo_id, &group[..]))
+                    enforce_sql_timeout(SelectPaths::query(connection, None, &repo_id, &group[..]))
                         .await?
                         .into_iter()
                         .collect::<HashMap<_, _>>();

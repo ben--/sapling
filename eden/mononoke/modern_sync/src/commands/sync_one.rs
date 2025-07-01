@@ -12,11 +12,7 @@ use std::sync::atomic::AtomicBool;
 use anyhow::Result;
 use anyhow::format_err;
 use clap::Parser;
-use clientinfo::ClientEntryPoint;
-use clientinfo::ClientInfo;
-use context::SessionContainer;
 use futures::channel::oneshot;
-use metadata::Metadata;
 use mononoke_app::MononokeApp;
 use mononoke_types::ChangesetId;
 use mutable_counters::MutableCountersArc;
@@ -36,11 +32,16 @@ use crate::sender::manager::SendManager;
 pub struct CommandArgs {
     #[clap(long, help = "Changeset to sync")]
     cs_id: ChangesetId,
+
+    #[clap(flatten, next_help_heading = "SYNC OPTIONS")]
+    sync_args: crate::sync::SyncArgs,
 }
 
 pub async fn run(app: MononokeApp, args: CommandArgs) -> Result<()> {
     let app_args = &app.args::<ModernSyncArgs>()?;
-    let repo: Repo = app.open_repo(&app_args.repo).await?;
+    let args = Arc::new(args);
+    let sync_args = &args.clone().sync_args;
+    let repo: Repo = app.open_repo(&sync_args.repo).await?;
     let _repo_id = repo.repo_identity().id();
     let repo_name = repo.repo_identity().name().to_string();
 
@@ -53,21 +54,7 @@ pub async fn run(app: MononokeApp, args: CommandArgs) -> Result<()> {
             repo_name
         ))?;
 
-    let mut metadata = Metadata::default();
-    metadata.add_client_info(ClientInfo::default_with_entry_point(
-        ClientEntryPoint::ModernSync,
-    ));
-
-    let mut scuba = app.environment().scuba_sample_builder.clone();
-    scuba.add_metadata(&metadata);
-
-    let session_container = SessionContainer::builder(app.fb)
-        .metadata(Arc::new(metadata))
-        .build();
-
-    let ctx = session_container
-        .new_context(app.logger().clone(), scuba)
-        .clone_with_repo_name(&repo_name.clone());
+    let ctx = crate::sync::build_context(Arc::new(app), &repo_name, false);
 
     let sender: Arc<dyn EdenapiSender + Send + Sync> = {
         let url = if let Some(socket) = app_args.dest_socket {
@@ -82,7 +69,10 @@ pub async fn run(app: MononokeApp, args: CommandArgs) -> Result<()> {
             .clone()
             .ok_or_else(|| format_err!("TLS params not found for repo {}", repo_name))?;
 
-        let dest_repo = app_args.dest_repo_name.clone().unwrap_or(repo_name.clone());
+        let dest_repo = sync_args
+            .dest_repo_name
+            .clone()
+            .unwrap_or(repo_name.clone());
 
         Arc::new(
             DefaultEdenapiSenderBuilder::new(

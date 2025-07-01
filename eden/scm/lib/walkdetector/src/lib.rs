@@ -9,18 +9,24 @@
 mod tests;
 mod walk_node;
 
+use std::sync::Arc;
 use std::sync::LazyLock;
+use std::sync::OnceLock;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicI64;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-#[cfg(not(test))]
-use std::time::Instant;
 
+#[cfg(test)]
+use coarsetime as _; // silence "unused dependency" warning
+#[cfg(not(test))]
+use coarsetime::Instant;
 #[cfg(test)]
 use mock_instant::Instant;
 use parking_lot::RwLock;
+use rand::Rng;
+use tracing::Level;
 use types::RepoPath;
 use types::RepoPathBuf;
 use walk_node::WalkNode;
@@ -30,10 +36,10 @@ use walk_node::WalkNode;
 //  - Passive - don't fetch or query any stores.
 //  - Minimize memory usage.
 
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct Detector {
     config: Config,
-    inner: RwLock<Inner>,
+    inner: Arc<RwLock<Inner>>,
 }
 
 struct Inner {
@@ -55,6 +61,10 @@ impl Default for Inner {
 impl Detector {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn reset_config(&mut self) {
+        self.config = Config::default();
     }
 
     pub fn set_walk_threshold(&mut self, threshold: usize) {
@@ -116,13 +126,13 @@ impl Detector {
 
     /// Observe a "heavy" or remote file (content) read of `path`.
     /// Returns whether an active walk changed (either created or removed).
-    pub fn file_loaded(&self, path: impl AsRef<RepoPath>) -> bool {
+    pub fn file_loaded(&self, path: impl AsRef<RepoPath>, pid: u32) -> bool {
         let path = path.as_ref();
 
         tracing::trace!(%path, "file_loaded");
 
         // Try lightweight read-only path.
-        if let Some(walk_root) = self.mark_read(path, WalkType::File, true) {
+        if let Some(walk_root) = self.mark_read(path, WalkType::File, true, pid) {
             tracing::trace!(%walk_root, file=%path, "file already in walk (fastpath)");
             return false;
         }
@@ -163,7 +173,7 @@ impl Detector {
             inner.insert_walk(
                 &self.config,
                 WalkType::File,
-                Walk::for_type(WalkType::File, 0, seen_count as u64),
+                Walk::for_type(WalkType::File, 0, seen_count as u64, pid),
                 dir_path,
             );
             walk_changed = true;
@@ -175,20 +185,21 @@ impl Detector {
     /// Observe a "soft" or cached file (content) access of `path`.
     /// This will not be tracked as a new walk, but will reset TTL of an existing walk.
     /// Returns whether path was covered by an active walk.
-    pub fn file_read(&self, path: impl AsRef<RepoPath>) -> bool {
+    pub fn file_read(&self, path: impl AsRef<RepoPath>, pid: u32) -> bool {
         let path = path.as_ref();
         tracing::trace!(%path, "file_read");
-        self.mark_read(path, WalkType::File, false).is_some()
+        self.mark_read(path, WalkType::File, false, pid).is_some()
     }
 
-    /// Observe a directory being loaded (i.e. "heavy" or remote read). `num_files` and
-    /// `num_dirs` report the number of file and directory children of `path`,
-    /// respectively. Returns whether an active walk changed (either created or removed).
+    /// Observe a directory being loaded (i.e. "heavy" or remote read). `num_files` and `num_dirs`
+    /// report the number of file and directory children of `path`, respectively. Pass zero if you
+    /// don't know. Returns whether an active walk changed (either created or removed).
     pub fn dir_loaded(
         &self,
         path: impl AsRef<RepoPath>,
         num_files: usize,
         num_dirs: usize,
+        pid: u32,
     ) -> bool {
         let path = path.as_ref();
 
@@ -202,7 +213,7 @@ impl Detector {
         );
 
         // Try lightweight read-only path.
-        if let Some(walk_root) = self.mark_read(path, WalkType::Directory, true) {
+        if let Some(walk_root) = self.mark_read(path, WalkType::Directory, true, pid) {
             tracing::trace!(%walk_root, dir=%path, "dir already in walk (fastpath)");
             if is_interesting_metadata {
                 // Fill in interesting metadata that informs detection of file content walks.
@@ -252,7 +263,7 @@ impl Detector {
             inner.insert_walk(
                 &self.config,
                 WalkType::Directory,
-                Walk::for_type(WalkType::Directory, 0, seen_count as u64),
+                Walk::for_type(WalkType::Directory, 0, seen_count as u64, pid),
                 dir_path,
             );
 
@@ -262,13 +273,35 @@ impl Detector {
         walk_changed
     }
 
-    /// Observe a "soft" or cached directory access of `path`.
-    /// This will not be tracked as a new walk, but will reset TTL of an existing walk.
-    /// Returns whether path was covered by an active walk.
-    pub fn dir_read(&self, path: impl AsRef<RepoPath>) -> bool {
+    /// Observe a "soft" or cached directory access of `path`. This will not be tracked as a new
+    /// walk, but will reset TTL of an existing walk. `num_files` and `num_dirs` report the number
+    /// of file and directory children of `path`, respectively. Pass zero if you don't know. Returns
+    /// whether path was covered by an active walk.
+    pub fn dir_read(
+        &self,
+        path: impl AsRef<RepoPath>,
+        num_files: usize,
+        num_dirs: usize,
+        pid: u32,
+    ) -> bool {
         let path = path.as_ref();
-        tracing::trace!(%path, "dir_read");
-        self.mark_read(path, WalkType::Directory, false).is_some()
+        tracing::trace!(%path, num_files, num_dirs, "dir_read");
+
+        // Remember interesting directory metadata, even though directory is being loaded from cache.
+        // It could still be involved in ongoing or future walk activity that involves remote fetches.
+        if interesting_metadata(
+            self.config.walk_threshold,
+            self.config.walk_ratio,
+            Some(num_files),
+            Some(num_dirs),
+        ) {
+            self.inner
+                .write()
+                .set_metadata(&self.config, path, num_files, num_dirs);
+        }
+
+        self.mark_read(path, WalkType::Directory, false, pid)
+            .is_some()
     }
 
     /// Record that a certain number of files have been preloaded. This has no functional purpose -
@@ -295,6 +328,7 @@ impl Detector {
         path: &'a RepoPath,
         wt: WalkType,
         heavy_read: bool,
+        pid: u32,
     ) -> Option<&'a RepoPath> {
         let dir = path.parent()?;
 
@@ -312,6 +346,8 @@ impl Detector {
                     (WalkType::Directory, false) => walk.inc_dir_read(walk_root, 1),
                     (WalkType::Directory, true) => walk.inc_dir_load(walk_root, 1),
                 };
+
+                walk.maybe_swap_pid(pid, 1);
             }
 
             return Some(dir.strip_suffix(suffix, true).unwrap_or_default());
@@ -330,16 +366,32 @@ fn interesting_metadata(
     // "interesting" means the directory size metadata might influence our walk detection decisions.
     // Basically, we care about very small or very large directories.
 
-    // Work backwards from walk threshold and walk ratio to calculate what size of directory would
-    // start to increase our walk threshold (due to the walk ratio).
-    let big_dir_threshold: usize = (threshold as f64 / walk_ratio) as usize;
+    if important_metadata(threshold, walk_ratio, num_files, num_dirs) {
+        return true;
+    }
 
     // We don't care about empty directories because we will never see "activity" for an empty
     // directory, so probably won't ever make use of the size hint. Marking empty directories as
     // "not interesting" significantly reduces the number of nodes we create during big walks.
-    num_dirs.is_some_and(|dirs| dirs > 0 && dirs < threshold || dirs >= big_dir_threshold)
-        || num_files
-            .is_some_and(|files| files > 0 && files < threshold || files > big_dir_threshold)
+    num_dirs.is_some_and(|dirs| dirs > 0 && dirs < threshold)
+        || num_files.is_some_and(|files| files > 0 && files < threshold)
+}
+
+fn important_metadata(
+    threshold: usize,
+    walk_ratio: f64,
+    num_files: Option<usize>,
+    num_dirs: Option<usize>,
+) -> bool {
+    // "important" means the directory size metadata should be retained indefinitely.
+    // Basically, we really care about very large directories.
+
+    // Work backwards from walk threshold and walk ratio to calculate what size of directory would
+    // start to increase our walk threshold (due to the walk ratio).
+    let big_dir_threshold: usize = (threshold as f64 / walk_ratio) as usize;
+
+    num_dirs.is_some_and(|dirs| dirs >= big_dir_threshold)
+        || num_files.is_some_and(|files| files > big_dir_threshold)
 }
 
 impl Inner {
@@ -552,8 +604,9 @@ impl Inner {
         None
     }
 
+    #[allow(clippy::useless_conversion)]
     fn needs_gc(&self, config: &Config) -> bool {
-        self.last_gc_time.elapsed() >= config.gc_interval
+        self.last_gc_time.elapsed() >= config.gc_interval.into()
     }
 
     /// Returns whether a walk was removed.
@@ -562,14 +615,20 @@ impl Inner {
             return false;
         }
 
-        let start = Instant::now();
+        let start = std::time::Instant::now();
 
-        let (deleted_nodes, remaining_nodes, deleted_walks) = self.node.gc();
+        let (deleted_nodes, remaining_nodes, deleted_walks) = self.node.gc(config);
 
         let elapsed = start.elapsed();
 
-        if deleted_nodes > 0 || deleted_walks > 0 || elapsed > Duration::from_millis(5) {
-            tracing::debug!(elapsed=?start.elapsed(), deleted_nodes, remaining_nodes, deleted_walks, "GC complete");
+        if deleted_nodes > 0 || deleted_walks > 0 || elapsed.as_millis() > 5 {
+            tracing::debug!(
+                ?elapsed,
+                deleted_nodes,
+                remaining_nodes,
+                deleted_walks,
+                "GC complete"
+            );
         }
 
         self.last_gc_time = Instant::now();
@@ -607,12 +666,10 @@ fn should_merge_into_ancestor(
     ancestor_distance: usize,
 ) -> Option<usize> {
     let mut kin_count = 0;
-    let mut walk_depth = 0;
     ancestor.iter(|node, depth| -> bool {
         if depth == ancestor_distance {
-            if let Some(walk) = node.get_walk_for_type(walk_type) {
+            if node.get_walk_for_type(walk_type).is_some() {
                 kin_count += 1;
-                walk_depth = walk_depth.max(walk.depth);
             }
         }
 
@@ -628,7 +685,7 @@ fn should_merge_into_ancestor(
         walk_ratio,
     ) {
         tracing::debug!(%dir, kin_count, ancestor_distance, walk_threshold, walk_ratio, ?ancestor.total_dirs, "combining with collateral kin");
-        Some(walk_depth + ancestor_distance)
+        Some(ancestor_distance)
     } else {
         None
     }
@@ -643,9 +700,9 @@ const DEFAULT_STRICT_MULTIPLIER: usize = 20;
 // Depth at which we no longer get the strict multiplier. 0 means we never get the multiplier.
 const DEFAULT_LAX_DEPTH: usize = 0;
 
-// If we know the total dir size, make sure walk threshold is at least 1% of dir size.
+// If we know the total dir size, make sure walk threshold is at least 3% of dir size.
 // This avoids detecting walks for enormous directories too quickly.
-const DEFAULT_WALK_RATIO: f64 = 0.01;
+const DEFAULT_WALK_RATIO: f64 = 0.03;
 
 // How often we garbage collect stale nodes.
 // We do not rely on running a full GC to expire old walks, only to clean up memory.
@@ -654,6 +711,7 @@ const DEFAULT_GC_INTERVAL: Duration = Duration::from_secs(10);
 // How stale a walk must be before we remove it.
 const DEFAULT_GC_TIMEOUT: Duration = Duration::from_secs(5);
 
+#[derive(Clone)]
 struct Config {
     // "How many children must be accessed before we consider parent walked?"
     // This is the main threshold to tune detector aggro.
@@ -701,6 +759,10 @@ pub struct Walk {
     // How many light/cached dir fetches we've observed under this walk.
     dir_reads: AtomicU64,
 
+    // Most commonly seen pid for this walk.
+    pid: AtomicU64,
+    pid_detail: OnceLock<String>,
+
     // Whether we have already logged the start of this walk.
     logged_start: AtomicBool,
 }
@@ -729,8 +791,9 @@ impl Walk {
         }
     }
 
-    fn for_type(t: WalkType, depth: usize, initial_loads: u64) -> Self {
+    fn for_type(t: WalkType, depth: usize, initial_loads: u64, pid: u32) -> Self {
         let w = Self::new(depth);
+        w.pid.store(pid as u64, Ordering::Relaxed);
         let counter = match t {
             WalkType::Directory => &w.dir_loads,
             WalkType::File => &w.file_loads,
@@ -740,8 +803,11 @@ impl Walk {
     }
 
     fn absorb_counters(&self, other: &Self) {
-        // Race conditions are not a big deal.
+        // If we are absorbing another walk whose start has already been logged, don't log the start
+        // again. There might be a lot of start events as walks coalesce; the important event is
+        // logged when the fully coalesced walk ends.
         if other.logged_start.load(Ordering::Relaxed) {
+            // Race conditions are not a big deal.
             self.logged_start.store(true, Ordering::Relaxed);
         }
 
@@ -758,33 +824,84 @@ impl Walk {
             other.file_preloads.load(Ordering::Relaxed),
             Ordering::AcqRel,
         );
+
+        if self.maybe_swap_pid(
+            other.pid.load(Ordering::Relaxed) as u32,
+            other.total_accesses(),
+        ) {
+            // If we took the other walk's pid, then also take its pid detail, if present.
+            if let Some(detail) = other.pid_detail.get() {
+                let _ = self.pid_detail.set(detail.to_string());
+            }
+        }
     }
 
     fn inc_file_load(&self, root: &RepoPath, val: u64) {
-        if self.file_loads.fetch_add(val, Ordering::AcqRel) == Self::BIG_WALK_THRESHOLD - 1 {
+        if self.file_loads.fetch_add(val, Ordering::AcqRel) >= Self::BIG_WALK_THRESHOLD - 1 {
             self.maybe_log_big_walk(root);
         }
     }
 
     fn inc_file_read(&self, root: &RepoPath, val: u64) {
-        if self.file_reads.fetch_add(val, Ordering::Relaxed) == Self::BIG_WALK_THRESHOLD - 1 {
+        if self.file_reads.fetch_add(val, Ordering::Relaxed) >= Self::BIG_WALK_THRESHOLD - 1 {
             self.maybe_log_big_walk(root);
         }
     }
 
     fn inc_dir_load(&self, root: &RepoPath, val: u64) {
-        if self.dir_loads.fetch_add(val, Ordering::AcqRel) == Self::BIG_WALK_THRESHOLD - 1 {
+        if self.dir_loads.fetch_add(val, Ordering::AcqRel) >= Self::BIG_WALK_THRESHOLD - 1 {
             self.maybe_log_big_walk(root);
         }
     }
 
     fn inc_dir_read(&self, root: &RepoPath, val: u64) {
-        if self.dir_reads.fetch_add(val, Ordering::Relaxed) == Self::BIG_WALK_THRESHOLD - 1 {
+        if self.dir_reads.fetch_add(val, Ordering::Relaxed) >= Self::BIG_WALK_THRESHOLD - 1 {
             self.maybe_log_big_walk(root);
         }
     }
 
+    fn total_accesses(&self) -> u64 {
+        self.dir_loads.load(Ordering::Relaxed)
+            + self.dir_reads.load(Ordering::Relaxed)
+            + self.file_loads.load(Ordering::Relaxed)
+            + self.file_reads.load(Ordering::Relaxed)
+    }
+
+    /// Probabilistically set self.pid=pid based on size of numerator relative to size of self.
+    /// Returns whether we took the new pid.
+    fn maybe_swap_pid(&self, pid: u32, numerator: u64) -> bool {
+        // If we already have pid detail filled in - don't swap to a new pid, lest they mismatch.
+        if self.pid_detail.get().is_some() {
+            return false;
+        }
+
+        let denominator = self.total_accesses();
+        if pid != self.pid() && rand::thread_rng().gen_range(0..denominator.max(1)) < numerator {
+            self.pid.store(pid as u64, Ordering::Relaxed);
+            true
+        } else {
+            false
+        }
+    }
+
     fn maybe_log_big_walk(&self, root: &RepoPath) {
+        // Init the pid detail at the start of the walk. If we wait until the walk ends, the walking
+        // process may have exited. We init pid_detail before checking logged_start because it is
+        // possible that logged_start is true before pid_detail is set due to absorbing a logged
+        // walk.
+        self.pid_detail.get_or_init(|| {
+            // Short circuit procinfo call if we aren't going to log it.
+            let tracing_enabled = tracing::enabled!(Level::INFO)
+                || tracing::enabled!(target: "big_walk", Level::DEBUG);
+
+            let pid = self.pid();
+            if tracing_enabled && pid > 0 {
+                procinfo::ancestors(pid)
+            } else {
+                String::new()
+            }
+        });
+
         if self.logged_start.swap(true, Ordering::AcqRel) {
             return;
         }
@@ -796,6 +913,7 @@ impl Walk {
             file_preloads = self.file_preloads.load(Ordering::Relaxed),
             dir_loads = self.dir_loads.load(Ordering::Relaxed),
             dir_reads = self.dir_reads.load(Ordering::Relaxed),
+            walker_detail = self.pid_detail.get(),
             "big walk started",
         );
     }
@@ -814,6 +932,8 @@ impl Walk {
                 file_preloads = self.file_preloads.load(Ordering::Relaxed),
                 dir_loads = self.dir_loads.load(Ordering::Relaxed),
                 dir_reads = self.dir_reads.load(Ordering::Relaxed),
+                walk_depth = self.depth,
+                walker_detail = self.pid_detail.get(),
                 "big walk ended",
             );
 
@@ -825,6 +945,8 @@ impl Walk {
                 file_preloads = self.file_preloads.load(Ordering::Relaxed),
                 dir_loads = self.dir_loads.load(Ordering::Relaxed),
                 dir_reads = self.dir_reads.load(Ordering::Relaxed),
+                walk_depth = self.depth,
+                walker_detail = self.pid_detail.get(),
             );
         }
     }
@@ -838,6 +960,10 @@ impl Walk {
             self.dir_loads.load(Ordering::Relaxed),
             self.dir_reads.load(Ordering::Relaxed),
         )
+    }
+
+    fn pid(&self) -> u32 {
+        self.pid.load(Ordering::Relaxed) as u32
     }
 }
 
@@ -870,22 +996,23 @@ impl AtomicInstant {
     }
 
     fn store(&self, value: Instant) {
-        self.0.store(
-            // It is theoretically possible for `value`` to be smaller than EPOCH. Do a saturating
-            // subtraction to 0, just in case. `duration_since` says it may panic in this case
-            // in the future.
-            value
-                .checked_duration_since(*EPOCH)
-                .unwrap_or_default()
-                .as_millis() as i64,
-            Ordering::Relaxed,
-        );
+        let epoch = *EPOCH;
+
+        // It is theoretically possible for `value` to be smaller than EPOCH.
+        let int_value = if value < epoch {
+            0
+        } else {
+            value.duration_since(epoch).as_millis() as i64
+        };
+
+        self.0.store(int_value, Ordering::Relaxed);
     }
 
+    #[allow(clippy::useless_conversion)]
     fn load(&self) -> Option<Instant> {
         match self.0.load(Ordering::Relaxed) {
             v if v < 0 => None,
-            v => Some(*EPOCH + Duration::from_millis(v as u64)),
+            v => Some(*EPOCH + Duration::from_millis(v as u64).into()),
         }
     }
 

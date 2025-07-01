@@ -55,10 +55,10 @@ class FakePrivHelper final : public PrivHelper {
       folly::StringPiece vfsType) override;
   folly::Future<folly::Unit> nfsMount(
       folly::StringPiece mountPath,
-      NFSMountOptions options) override;
+      const NFSMountOptions& options) override;
   folly::Future<folly::Unit> fuseUnmount(
       folly::StringPiece mountPath,
-      UnmountOptions options) override;
+      const UnmountOptions& options) override;
   folly::Future<folly::Unit> nfsUnmount(folly::StringPiece mountPath) override;
   folly::Future<folly::Unit> bindMount(
       folly::StringPiece clientPath,
@@ -80,6 +80,9 @@ class FakePrivHelper final : public PrivHelper {
       const std::string& specifiedOutputPath,
       const bool shouldUpload) override;
   folly::Future<StopFileAccessMonitorResponse> stopFam() override;
+  folly::Future<folly::Unit> setMemoryPriorityForProcess(
+      pid_t pid,
+      int priority) override;
   int stop() override;
   int getRawClientFd() const override {
     return -1;

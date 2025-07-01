@@ -29,7 +29,7 @@ name = "sqlblob_gc"
 path = "cmds/sqlblob_gc/main.rs"
 
 [dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0.98"
 ascii = "1.0"
 blobrepo_override = { version = "0.1.0", path = "blobrepo/override" }
 blobrepo_utils = { version = "0.1.0", path = "blobrepo_utils" }
@@ -39,7 +39,7 @@ bonsai_git_mapping = { version = "0.1.0", path = "bonsai_git_mapping" }
 bonsai_hg_mapping = { version = "0.1.0", path = "bonsai_hg_mapping" }
 bonsai_svnrev_mapping = { version = "0.1.0", path = "bonsai_svnrev_mapping" }
 borrowed = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-bytesize = "1.1"
+bytesize = "2.0"
 check_git_wc = { version = "0.1.0", path = "git/check_git_wc" }
 clap = { version = "4.5.38", features = ["derive", "env", "string", "unicode", "wrap_help"] }
 cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
@@ -100,7 +100,6 @@ rusqlite_migration = { git = "https://github.com/cljoly/rusqlite_migration", rev
 sqlx = { git = "https://github.com/launchbadge/sqlx", rev = "75d5787581c2d58cc23984704e2fe267711dd603" }
 stabby = { git = "https://github.com/fbsource/stabby", rev = "22db1dda19938ff7725a93db64012a5730325c5d" }
 uefisettings = { git = "https://github.com/linuxboot/uefisettings", rev = "f16daed1d2bd1216204fd24e876c6477d03aebb3" }
-uefisettings_backend_thrift = { git = "https://github.com/linuxboot/uefisettings", rev = "f16daed1d2bd1216204fd24e876c6477d03aebb3" }
 vm-allocator = { git = "https://github.com/rust-vmm/vm-allocator", rev = "5fb545cc6e41fdc9f27d48d97ed26274a35bc6c6" }
 warp = { git = "https://github.com/jdthomas/warp.git", rev = "c794232d182abaa3add8184e7d661e084cc516c5" }
 zenoh = { git = "https://github.com/eclipse-zenoh/zenoh", rev = "cd9655fdb521ad13504a2ef9e0dff5b985b521ea" }
@@ -230,7 +229,6 @@ members = [
   "commit_rewriting/bookmark_renaming",
   "commit_rewriting/bookmarks_validator",
   "commit_rewriting/commit_validator",
-  "commit_rewriting/cross_repo_sync",
   "commit_rewriting/live_commit_sync_config",
   "commit_rewriting/megarepo",
   "commit_rewriting/mononoke_x_repo_sync_job",
@@ -307,6 +305,8 @@ members = [
   "derived_data/test_utils",
   "derived_data/unodes",
   "edenapi_service",
+  "features/commit_transformation/commit_transformation",
+  "features/cross_repo_sync",
   "features/history_traversal",
   "features/redaction",
   "features/repo_metadata",
@@ -333,10 +333,6 @@ members = [
   "git/import_tools",
   "git/packetline",
   "git/packfile",
-  "git/packfile/if",
-  "git/packfile/if/clients",
-  "git/packfile/if/mocks",
-  "git/packfile/if/services",
   "git/protocol",
   "git_ref_content_mapping",
   "git_server",
@@ -354,7 +350,6 @@ members = [
   "lfs_server",
   "manifest",
   "megarepo_api",
-  "megarepo_api/commit_transformation",
   "megarepo_api/if/megarepo_configs",
   "megarepo_api/if/megarepo_configs/clients",
   "megarepo_api/if/megarepo_configs/mocks",
@@ -490,3 +485,6 @@ members = [
   "walker",
   "wireproto_handler",
 ]
+
+[workspace.package]
+license = "GPLv2+"

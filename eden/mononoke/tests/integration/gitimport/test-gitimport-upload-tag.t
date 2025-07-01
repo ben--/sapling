@@ -17,30 +17,47 @@
   $ git commit -qa -m "Commit"
   $ git tag -a -m "Tag" tag1
   $ tag_hash=$(git rev-parse tags/tag1)
+  $ git tag -a -m "Another Tag" tag2
+  $ tag2_hash=$(git rev-parse tags/tag2)
 
 # Import just the tag into Mononoke
-  $ with_stripped_logs gitimport "$GIT_REPO" upload-tag $tag_hash
-  using repo "repo" repoid RepositoryId(0)
+  $ with_stripped_logs gitimport "$GIT_REPO" upload-tags $tag_hash $tag2_hash | grep Uploaded | sort
   Uploaded tag with ID 929a3a6ccd846af11aa4384cc99d63691b480d9d
+  Uploaded tag with ID ec2d3c28a6524f5bd4d16b21020b4cffec95db15
 
-# Ensure that the uploaded tag is visible in Mononoke
+# Ensure that the uploaded tags are visible in Mononoke
   $ mononoke_admin git-objects -R repo fetch --id $tag_hash
   The object is a Git Tag
   
-  Tag {
-      target: Sha1(15cc4e9575665b507ee372f97b716ff552842136),
+  TagRef {
+      target: "15cc4e9575665b507ee372f97b716ff552842136",
       target_kind: Commit,
       name: "tag1",
       tagger: Some(
-          Signature {
+          SignatureRef {
               name: "mononoke",
               email: "mononoke@mononoke",
-              time: Time {
-                  seconds: 946684800,
-                  offset: 0,
-              },
+              time: "946684800 +0000",
           },
       ),
       message: "Tag\n",
+      pgp_signature: None,
+  }
+
+  $ mononoke_admin git-objects -R repo fetch --id $tag2_hash
+  The object is a Git Tag
+  
+  TagRef {
+      target: "15cc4e9575665b507ee372f97b716ff552842136",
+      target_kind: Commit,
+      name: "tag2",
+      tagger: Some(
+          SignatureRef {
+              name: "mononoke",
+              email: "mononoke@mononoke",
+              time: "946684800 +0000",
+          },
+      ),
+      message: "Another Tag\n",
       pgp_signature: None,
   }

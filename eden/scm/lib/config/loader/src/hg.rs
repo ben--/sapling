@@ -749,6 +749,10 @@ fn get_config_dir(info: Option<&RepoMinimalInfo>) -> Result<PathBuf, Error> {
 }
 
 #[cfg(feature = "fb")]
+/// Calculate internal-only config.
+/// Might download the remote script (hgrc.remote_cache).
+/// Does not write the config file (hgrc.dynamic).
+/// Used by the debugdumpinternalconfig command.
 pub fn calculate_internalconfig(
     mode: FbConfigMode,
     config_dir: PathBuf,
@@ -758,7 +762,7 @@ pub fn calculate_internalconfig(
     proxy_sock_path: Option<String>,
     allow_remote_snapshot: bool,
     domain_override: Option<crate::fb::internalconfig::Domain>,
-    is_git: bool,
+    info: Option<&RepoMinimalInfo>,
 ) -> Result<ConfigSet> {
     use crate::fb::internalconfig::Generator;
 
@@ -769,7 +773,7 @@ pub fn calculate_internalconfig(
         user_name,
         proxy_sock_path,
         allow_remote_snapshot,
-        is_git,
+        info,
     )?;
     if let Some(domain) = domain_override {
         g.domain = domain;
@@ -778,7 +782,10 @@ pub fn calculate_internalconfig(
 }
 
 #[cfg(feature = "fb")]
-pub fn generate_internalconfig(
+/// If the on-disk internal-only config (hgrc.dynamic) is outdated, update it.
+/// Might download the remote script (hgrc.remote_cache).
+/// Used by the debugrefreshconfig command.
+pub fn maybe_refresh_internalconfig_on_disk(
     mode: FbConfigMode,
     info: Option<&RepoMinimalInfo>,
     repo_name: Option<impl AsRef<str>>,
@@ -799,7 +806,7 @@ pub fn generate_internalconfig(
         repo_path = ?info.map(|i| &i.path),
         canary = ?canary,
         has_info = info.is_some(),
-        "generate_internalconfig",
+        "maybe_refresh_internalconfig_on_disk",
     );
 
     // Resolve sharedpath
@@ -868,7 +875,7 @@ pub fn generate_internalconfig(
         proxy_sock_path,
         allow_remote_snapshot,
         domain_override,
-        info.is_some_and(|i| i.store_requirements.contains("git")),
+        info,
     )?;
     let config_str = format!("{}{}", header, config);
 
@@ -980,7 +987,7 @@ fn load_dynamic(
         };
 
         // Regen inline
-        let res = generate_internalconfig(
+        let res = maybe_refresh_internalconfig_on_disk(
             mode,
             info.as_disk(),
             repo_name,

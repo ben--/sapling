@@ -5,6 +5,8 @@
  * LICENSE file in the root directory of this source tree.
  */
 
+use std::fmt::Write;
+
 #[cfg(target_os = "macos")]
 unsafe extern "C" {
     fn darwin_ppid(pid: u32) -> u32;
@@ -18,88 +20,68 @@ mod windows {
     use std::mem::zeroed;
     use std::os::windows::ffi::OsStringExt;
 
+    use ntapi::ntpsapi::NtQueryInformationProcess;
+    use ntapi::ntpsapi::PROCESS_BASIC_INFORMATION;
+    use ntapi::ntpsapi::ProcessBasicInformation;
     use winapi::shared::minwindef::DWORD;
+    use winapi::shared::minwindef::PULONG;
+    use winapi::shared::ntdef::ULONG;
     use winapi::um::handleapi::CloseHandle;
-    use winapi::um::handleapi::INVALID_HANDLE_VALUE;
-    use winapi::um::tlhelp32::CreateToolhelp32Snapshot;
-    use winapi::um::tlhelp32::PROCESSENTRY32W;
-    use winapi::um::tlhelp32::Process32FirstW;
-    use winapi::um::tlhelp32::Process32NextW;
-    use winapi::um::tlhelp32::TH32CS_SNAPPROCESS;
+    use winapi::um::processthreadsapi::OpenProcess;
+    use winapi::um::psapi::GetProcessImageFileNameW;
     use winapi::um::winnt::HANDLE;
+    use winapi::um::winnt::PROCESS_QUERY_INFORMATION;
 
-    pub(crate) struct Snapshot {
-        handle: HANDLE,
+    pub(crate) fn exe_name(process_id: DWORD) -> Result<String, ()> {
+        let process_handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, 0, process_id as _) };
+        if process_handle.is_null() {
+            return Err(());
+        }
+
+        let mut buffer: Vec<u16> = vec![0; 4096];
+        let path_len = unsafe {
+            GetProcessImageFileNameW(process_handle, buffer.as_mut_ptr(), buffer.len() as u32)
+        };
+
+        unsafe { CloseHandle(process_handle) };
+
+        if path_len == 0 {
+            return Err(());
+        }
+
+        let path = OsString::from_wide(&buffer[..path_len as usize]);
+        let name = path
+            .to_str()
+            .map(|s| s.rsplit(&['\\', '/']).next().unwrap_or("").to_string());
+        name.ok_or(())
     }
 
-    impl Drop for Snapshot {
-        fn drop(&mut self) {
-            unsafe { CloseHandle(self.handle) };
-        }
-    }
-
-    impl Snapshot {
-        fn new_pe32() -> PROCESSENTRY32W {
-            let mut pe: PROCESSENTRY32W = unsafe { zeroed() };
-            pe.dwSize = size_of::<PROCESSENTRY32W>() as DWORD;
-            pe
+    pub(crate) fn parent_pid(process_id: DWORD) -> Result<DWORD, ()> {
+        let process_handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION, 0, process_id as _) };
+        if process_handle.is_null() {
+            return Err(());
         }
 
-        pub(crate) fn new() -> Result<Snapshot, ()> {
-            let snapshot_handle: HANDLE =
-                unsafe { CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) };
+        let mut pbi: PROCESS_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
+        let mut return_length: ULONG = 0;
 
-            if snapshot_handle == INVALID_HANDLE_VALUE {
-                return Err(());
-            }
+        let status = unsafe {
+            NtQueryInformationProcess(
+                process_handle,
+                ProcessBasicInformation,
+                &mut pbi as *mut _ as *mut _,
+                std::mem::size_of::<PROCESS_BASIC_INFORMATION>() as u32,
+                &mut return_length as PULONG,
+            )
+        };
 
-            Ok(Snapshot {
-                handle: snapshot_handle,
-            })
+        unsafe { CloseHandle(process_handle) };
+
+        if status < 0 {
+            return Err(());
         }
 
-        fn find<F>(&self, condition: F) -> Result<PROCESSENTRY32W, ()>
-        where
-            F: Fn(&PROCESSENTRY32W) -> bool,
-        {
-            let mut pe32 = Snapshot::new_pe32();
-            if unsafe { Process32FirstW(self.handle, &mut pe32) } == 0 {
-                return Err(());
-            }
-
-            loop {
-                if condition(&pe32) {
-                    return Ok(pe32);
-                }
-
-                if unsafe { Process32NextW(self.handle, &mut pe32) } == 0 {
-                    break;
-                }
-            }
-
-            Err(())
-        }
-
-        fn find_by_pid(&self, pid: DWORD) -> Result<PROCESSENTRY32W, ()> {
-            self.find(|pe32| pe32.th32ProcessID == pid)
-        }
-
-        pub(crate) fn get_parent_process_id(&self, process_id: DWORD) -> Result<DWORD, ()> {
-            self.find_by_pid(process_id)
-                .map(|pe32| pe32.th32ParentProcessID)
-        }
-
-        pub(crate) fn get_process_executable_name(&self, process_id: DWORD) -> Result<String, ()> {
-            self.find_by_pid(process_id)
-                .map(|pe32| pe32.szExeFile)
-                .map(|cs| {
-                    cs.iter()
-                        .take_while(|&&i| i != 0)
-                        .map(|&i| i as u16)
-                        .collect::<Vec<u16>>()
-                })
-                .map(|ref v| OsString::from_wide(v).into_string().unwrap_or("".into()))
-        }
+        Ok(pbi.InheritedFromUniqueProcessId as u32)
     }
 }
 
@@ -180,10 +162,8 @@ pub fn parent_pid(pid: u32) -> u32 {
 
     #[cfg(windows)]
     {
-        if let Ok(snapshot) = windows::Snapshot::new() {
-            if let Ok(ppid) = snapshot.get_parent_process_id(pid) {
-                return ppid;
-            }
+        if let Ok(ppid) = windows::parent_pid(pid) {
+            return ppid;
         }
     }
 
@@ -209,13 +189,55 @@ pub fn exe_name(pid: u32) -> String {
 
     #[cfg(windows)]
     {
-        if let Ok(snapshot) = windows::Snapshot::new() {
-            if let Ok(name) = snapshot.get_process_executable_name(pid) {
-                return name;
-            }
+        if let Ok(name) = windows::exe_name(pid) {
+            return name;
         }
     }
 
     #[allow(unreachable_code)]
     String::new()
+}
+
+/// Get a description of pid's ancestors, including pid itself.
+pub fn ancestors(mut pid: u32) -> String {
+    if pid == 0 {
+        pid = current_pid();
+    }
+
+    let mut buf = String::new();
+
+    let mut count = 0;
+    while pid > 0 {
+        count += 1;
+        if count >= 16 {
+            let _ = write!(&mut buf, "...");
+            break;
+        }
+
+        if !buf.is_empty() {
+            let _ = write!(&mut buf, " <- ");
+        }
+
+        let name = exe_name(pid);
+
+        // Trim to last part of path to keep compact.
+        let name = name
+            .rsplit(if cfg!(windows) {
+                &['/', '\\'][..]
+            } else {
+                &['/'][..]
+            })
+            .next()
+            .unwrap_or(&name);
+
+        if name.is_empty() {
+            let _ = write!(&mut buf, "{pid}");
+        } else {
+            let _ = write!(&mut buf, "{name}({pid})");
+        }
+
+        pid = parent_pid(pid);
+    }
+
+    buf
 }

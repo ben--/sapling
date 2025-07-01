@@ -75,7 +75,8 @@ Create another change that is not related
   $ hg update .^
   0 files updated, 0 files merged, 1 files removed, 0 files unresolved
   $ hg subtree merge -r . --from-path bar --to-path foo
-  computing merge base (timeout: 120 seconds)...
+  searching for merge base ...
+  found the last subtree copy commit ca8bcf7d3251
   merge base: 13445855d10c
   merging foo/file2 and bar/file1 to foo/file2
   warning: 1 conflicts while merging foo/file2! (edit, then use 'hg resolve --mark')

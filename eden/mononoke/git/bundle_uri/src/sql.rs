@@ -129,7 +129,7 @@ impl SqlGitBundleMetadataStorage {
         let txn = conn.start_transaction().await?;
 
         let (txn, rows) =
-            GetLatestBundleListNumForRepo::query_with_transaction(txn, &self.repo_id).await?;
+            GetLatestBundleListNumForRepo::query_with_transaction(txn, None, &self.repo_id).await?;
 
         let new_bundle_list_num = rows.first().map_or(1, |val| val.0 + 1);
         let values: Vec<_> = bundles
@@ -146,17 +146,30 @@ impl SqlGitBundleMetadataStorage {
             })
             .collect();
 
-        let (txn, _) = AddNewBundles::query_with_transaction(txn, values.as_slice()).await?;
+        let (txn, _) = AddNewBundles::query_with_transaction(txn, None, values.as_slice()).await?;
 
         txn.commit().await?;
 
         Ok(new_bundle_list_num)
     }
 
+    pub async fn get_latest_bundle_list_from_primary(&self) -> Result<Option<BundleList>> {
+        self._get_latest_bundle_list(true).await
+    }
+
     pub async fn get_latest_bundle_list(&self) -> Result<Option<BundleList>> {
-        let rows =
-            GetLatestBundleListForRepo::query(&self.connections.read_connection, &self.repo_id)
-                .await?;
+        self._get_latest_bundle_list(false).await
+    }
+    pub async fn _get_latest_bundle_list(
+        &self,
+        read_from_primary: bool,
+    ) -> Result<Option<BundleList>> {
+        let conn = if read_from_primary {
+            &self.connections.write_connection
+        } else {
+            &self.connections.read_connection
+        };
+        let rows = GetLatestBundleListForRepo::query(conn, None, &self.repo_id).await?;
 
         let bundle_list_num = match rows.first() {
             Some(val) => val.2,
@@ -192,6 +205,7 @@ impl SqlGitBundleMetadataStorage {
     pub async fn remove_bundle_list(&self, bundle_list_num: u64) -> Result<()> {
         RemoveBundleList::query(
             &self.connections.write_connection,
+            None,
             &self.repo_id,
             &bundle_list_num,
         )
@@ -201,7 +215,8 @@ impl SqlGitBundleMetadataStorage {
 
     pub async fn get_bundle_lists(&self) -> Result<Vec<BundleList>> {
         let rows =
-            GetBundleListsForRepo::query(&self.connections.read_connection, &self.repo_id).await?;
+            GetBundleListsForRepo::query(&self.connections.read_connection, None, &self.repo_id)
+                .await?;
 
         // +----------------------+-------------+
         // | in_bundle_list_order | bundle_list |

@@ -6,7 +6,6 @@
  */
 
 use std::fmt::Debug;
-use std::mem;
 
 use anyhow::Result;
 use bytes::Bytes;
@@ -137,7 +136,7 @@ impl WirePackPartProcessor for TreemanifestPartProcessor {
 }
 
 fn replace_or_fail_if_exists<T: Debug>(existing: &mut Option<T>, new_value: T) -> Result<()> {
-    let existing = mem::replace(existing, Some(new_value));
+    let existing = existing.replace(new_value);
     if existing.is_some() {
         let msg = format!("{:?} was already set", existing);
         Err(ErrorKind::MalformedTreemanifestPart(msg).into())

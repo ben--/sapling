@@ -8,9 +8,9 @@ edition = "2024"
 license = "GPLv2+"
 
 [dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0.98"
 async-trait = "0.1.86"
-blake3 = { version = "=1.5.5", features = ["mmap", "rayon", "traits-preview"] }
+blake3 = { version = "=1.6.1", features = ["mmap", "rayon", "traits-preview"] }
 clap = { version = "3.2.25", features = ["derive", "env", "regex", "unicode", "wrap_help"] }
 colored = "2.1.0"
 comfy-table = "7.1.4"
@@ -32,7 +32,7 @@ sapling-io = { version = "0.1.0", path = "../../../scm/lib/io" }
 sapling-termlogger = { version = "0.1.0", path = "../../../scm/lib/io/term/logger" }
 sapling-thrift-types = { version = "0.1.0", path = "../../../scm/lib/thrift-types" }
 serde = { version = "1.0.185", features = ["derive", "rc"] }
-serde_json = { version = "1.0.140", features = ["float_roundtrip", "unbounded_depth"] }
+serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "unbounded_depth"] }
 subprocess = "0.2.9"
 sysinfo = "0.35.1"
 tabular = "0.2.0"

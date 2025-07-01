@@ -24,11 +24,13 @@ use futures::future;
 use futures::stream;
 use futures_stats::TimedTryFutureExt;
 use git_types::GitIdentifier;
+use git_types::HeaderState;
 use git_types::ObjectContent;
-use git_types::fetch_git_object;
+use git_types::fetch_git_object_bytes;
 use gix_features::progress::Discard;
 use gix_hash::Kind;
 use gix_hash::ObjectId;
+use gix_hash::oid;
 use gix_object::WriteTo;
 use gix_object::encode::loose_header;
 use gix_pack::cache::Never;
@@ -39,12 +41,13 @@ use gix_pack::data::decode::entry::ResolvedBase;
 use gix_pack::data::input::Entry as InputEntry;
 use gix_pack::data::input::Error as InputError;
 use mononoke_types::hash::GitSha1;
-use packfile::types::BaseObject;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 use repo_blobstore::RepoBlobstore;
 use rustc_hash::FxHashMap;
 use scuba_ext::FutureStatsScubaExt;
+use sha1::Digest;
+use sha1::Sha1;
 use tempfile::Builder;
 
 use crate::PACKFILE_SUFFIX;
@@ -139,9 +142,11 @@ fn resolve_delta(
     known_objects: &ObjectMap,
 ) -> Option<ResolvedBase> {
     known_objects.get(oid).map(|object_content| {
-        object_content.parsed.write_to(out.by_ref()).unwrap();
+        object_content
+            .with_parsed(|parsed| parsed.write_to(out.by_ref()))
+            .unwrap();
         ResolvedBase::OutOfPack {
-            kind: object_content.parsed.kind().clone(),
+            kind: object_content.with_parsed(|parsed| parsed.kind()).clone(),
             end: out.len(),
         }
     })
@@ -170,19 +175,16 @@ async fn fetch_prereq_objects(
             async move {
                 let git_identifier =
                     GitIdentifier::Basic(GitSha1::from_object_id(object_id.as_ref())?);
-                let fallible_git_object = fetch_git_object(&ctx, blobstore, &git_identifier).await;
-                match fallible_git_object {
-                    Ok(object) => {
-                        let mut git_bytes = object.loose_header().into_vec();
-                        object.write_to(git_bytes.by_ref())?;
-                        anyhow::Ok(Some((
-                            object_id,
-                            ObjectContent::new(object, Bytes::from(git_bytes)),
-                        )))
-                    }
-                    // The object might not be present in the data store since its an inpack object
-                    _ => anyhow::Ok(None),
-                }
+                anyhow::Ok(
+                    fetch_git_object_bytes(&ctx, blobstore, &git_identifier, HeaderState::Included)
+                        .await
+                        .ok()
+                        .and_then(|git_bytes| {
+                            ObjectContent::try_from_loose(git_bytes)
+                                .ok()
+                                .map(|content| (object_id, content))
+                        }),
+                )
             }
         })
         .buffer_unordered(concurrency)
@@ -236,10 +238,14 @@ fn process_pack_entries(pack_file: &data::File, entries: PackEntries) -> Result<
                         outcome.kind,
                         outcome.object_size as usize,
                     ));
-                    let base_object = BaseObject::new(object_bytes.clone())
-                        .context("Error in converting bytes to git object")?;
-                    let id = base_object.hash;
-                    let object = ObjectContent::new(base_object.object, object_bytes);
+                    let mut hasher = Sha1::new();
+                    hasher.update(&object_bytes);
+                    let hash_bytes = hasher.finalize();
+                    // Create the Git object from raw bytes
+                    let id = oid::try_from_bytes(hash_bytes.as_ref())
+                        .context("Failed to convert packfile item hash to Git Object ID")?
+                        .into();
+                    let object = ObjectContent::try_from_loose(object_bytes)?;
                     let processed_entry = PackEntry::Processed((id, object));
                     anyhow::Ok(processed_entry)
                 }

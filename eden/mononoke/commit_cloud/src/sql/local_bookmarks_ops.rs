@@ -58,6 +58,7 @@ impl Get<WorkspaceLocalBookmark> for SqlCommitCloud {
     ) -> anyhow::Result<Vec<WorkspaceLocalBookmark>> {
         let rows = GetLocalBookmarks::query(
             &self.connections.read_connection,
+            None,
             &reponame.clone(),
             &workspace,
         )
@@ -75,16 +76,19 @@ impl GetAsMap<LocalBookmarksMap> for SqlCommitCloud {
         reponame: String,
         workspace: String,
     ) -> anyhow::Result<LocalBookmarksMap> {
-        let rows =
-            GetLocalBookmarks::query(&self.connections.read_connection, &reponame, &workspace)
-                .await?;
+        let rows = GetLocalBookmarks::query(
+            &self.connections.read_connection,
+            None,
+            &reponame,
+            &workspace,
+        )
+        .await?;
         let mut map = LocalBookmarksMap::new();
         for (name, node) in rows {
-            let hgid = node.into();
-            if let Some(val) = map.get_mut(&hgid) {
+            if let Some(val) = map.get_mut(&node) {
                 val.push(name.clone());
             } else {
-                map.insert(hgid, vec![name]);
+                map.insert(node, vec![name]);
             }
         }
         Ok(map)
@@ -101,7 +105,7 @@ impl Insert<WorkspaceLocalBookmark> for SqlCommitCloud {
         workspace: String,
         data: WorkspaceLocalBookmark,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = InsertLocalBookmark::maybe_traced_query_with_transaction(
+        let (txn, _) = InsertLocalBookmark::query_with_transaction(
             txn,
             cri,
             &reponame,
@@ -124,7 +128,7 @@ impl Update<WorkspaceLocalBookmark> for SqlCommitCloud {
         cc_ctx: CommitCloudContext,
         args: Self::UpdateArgs,
     ) -> anyhow::Result<(Transaction, u64)> {
-        let (txn, result) = UpdateWorkspaceName::maybe_traced_query_with_transaction(
+        let (txn, result) = UpdateWorkspaceName::query_with_transaction(
             txn,
             cri,
             &cc_ctx.reponame,
@@ -147,7 +151,7 @@ impl Delete<WorkspaceLocalBookmark> for SqlCommitCloud {
         workspace: String,
         args: Self::DeleteArgs,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = DeleteLocalBookmark::maybe_traced_query_with_transaction(
+        let (txn, _) = DeleteLocalBookmark::query_with_transaction(
             txn,
             cri,
             &reponame,

@@ -64,7 +64,7 @@ impl SqlBookmarksSubscription {
             .await
             .context("Failed to start bookmarks read transaction")?;
 
-        let (txn, log_id_rows) = GetLargestLogId::maybe_traced_query_with_transaction(
+        let (txn, log_id_rows) = GetLargestLogId::query_with_transaction(
             txn,
             ctx.client_request_info(),
             &sql_bookmarks.repo_id,
@@ -81,7 +81,7 @@ impl SqlBookmarksSubscription {
             .unwrap_or(0);
 
         let tok: i32 = rand::thread_rng().r#gen();
-        let (txn, bookmarks) = SelectAllUnordered::maybe_traced_query_with_transaction(
+        let (txn, bookmarks) = SelectAllUnordered::query_with_transaction(
             txn,
             ctx.client_request_info(),
             &sql_bookmarks.repo_id,
@@ -142,7 +142,7 @@ impl BookmarksSubscription for SqlBookmarksSubscription {
 
         let conn = self.sql_bookmarks.connection(ctx, self.freshness);
 
-        let changes = SelectUpdatedBookmarks::maybe_traced_query(
+        let changes = SelectUpdatedBookmarks::query(
             conn,
             ctx.client_request_info(),
             &self.sql_bookmarks.repo_id,

@@ -57,6 +57,7 @@ impl Get<WorkspaceRemoteBookmark> for SqlCommitCloud {
     ) -> anyhow::Result<Vec<WorkspaceRemoteBookmark>> {
         let rows = GetRemoteBookmarks::query(
             &self.connections.read_connection,
+            None,
             &reponame.clone(),
             &workspace,
         )
@@ -76,6 +77,7 @@ impl GetAsMap<RemoteBookmarksMap> for SqlCommitCloud {
     ) -> anyhow::Result<RemoteBookmarksMap> {
         let rows = GetRemoteBookmarks::query(
             &self.connections.read_connection,
+            None,
             &reponame.clone(),
             &workspace,
         )
@@ -84,11 +86,10 @@ impl GetAsMap<RemoteBookmarksMap> for SqlCommitCloud {
         let mut map = RemoteBookmarksMap::new();
         for (remote, name, commit) in rows {
             let rb = WorkspaceRemoteBookmark::new(remote, name, commit.clone())?;
-            let hgid = commit.into();
-            if let Some(val) = map.get_mut(&hgid) {
+            if let Some(val) = map.get_mut(&commit) {
                 val.push(rb);
             } else {
-                map.insert(hgid, vec![rb]);
+                map.insert(commit, vec![rb]);
             }
         }
         Ok(map)
@@ -105,7 +106,7 @@ impl Insert<WorkspaceRemoteBookmark> for SqlCommitCloud {
         workspace: String,
         data: WorkspaceRemoteBookmark,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = InsertRemoteBookmark::maybe_traced_query_with_transaction(
+        let (txn, _) = InsertRemoteBookmark::query_with_transaction(
             txn,
             cri,
             &reponame,
@@ -129,7 +130,7 @@ impl Update<WorkspaceRemoteBookmark> for SqlCommitCloud {
         cc_ctx: CommitCloudContext,
         args: Self::UpdateArgs,
     ) -> anyhow::Result<(Transaction, u64)> {
-        let (txn, result) = UpdateWorkspaceName::maybe_traced_query_with_transaction(
+        let (txn, result) = UpdateWorkspaceName::query_with_transaction(
             txn,
             cri,
             &cc_ctx.reponame,
@@ -152,7 +153,7 @@ impl Delete<WorkspaceRemoteBookmark> for SqlCommitCloud {
         workspace: String,
         args: Self::DeleteArgs,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = DeleteRemoteBookmark::maybe_traced_query_with_transaction(
+        let (txn, _) = DeleteRemoteBookmark::query_with_transaction(
             txn,
             cri,
             &reponame,

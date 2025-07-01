@@ -227,8 +227,6 @@ function mononoke_modern_sync {
   GLOG_minloglevel=5 "$MONONOKE_MODERN_SYNC" \
     "${CACHE_ARGS[@]}" \
     "${COMMON_ARGS[@]}" \
-    --repo-name "$ORIG_REPO" \
-    --dest-repo-name "$DEST_REPO" \
     --bookmark "master_bookmark" \
     --exit-file "exit_file" \
     --mononoke-config-path "$TESTTMP/mononoke-config" \
@@ -240,7 +238,10 @@ function mononoke_modern_sync {
     --tracing \
     --tracing-test-format \
     ${FLAGS_ARG:+$FLAGS_ARG} \
-    "$COMMAND" "$@"
+    "$COMMAND" \
+    --repo-name "$ORIG_REPO" \
+    --dest-repo-name "$DEST_REPO" \
+    "$@"
 }
 
 function mononoke_admin {
@@ -983,7 +984,6 @@ function mononoke_git_service {
   local bound_addr_file log
   bound_addr_file="$TESTTMP/mononoke_git_service_addr.txt"
   log="${TESTTMP}/mononoke_git_service.out"
-  max_request_size="${MAX_REQUEST_SIZE:-10737418240}"
   rm -f "$bound_addr_file"
   GLOG_minloglevel=5 "$MONONOKE_GIT_SERVER" "$@" \
     --tls-ca "$TEST_CERTDIR/root-ca.crt" \
@@ -995,7 +995,6 @@ function mononoke_git_service {
     --log-level DEBUG \
     --mononoke-config-path "$TESTTMP/mononoke-config" \
     --bound-address-file "$TESTTMP/mononoke_git_service_addr.txt" \
-    --max-request-size "$max_request_size" \
     "${CACHE_ARGS[@]}" \
     "${COMMON_ARGS[@]}" >> "$log" 2>&1 &
   export MONONOKE_GIT_SERVICE_PID=$!

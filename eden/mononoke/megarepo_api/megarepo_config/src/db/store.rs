@@ -93,7 +93,7 @@ impl MegarepoSyncConfig for SqlMegarepoSyncConfig {
         let contents =
             String::from_utf8(fbthrift::simplejson_protocol::serialize(&sources).to_vec())
                 .context("failed to serialize SyncTargetConfig")?;
-        let res = AddRepoConfig::maybe_traced_query(
+        let res = AddRepoConfig::query(
             &self.connections.write_connection,
             ctx.client_request_info(),
             repo_id,
@@ -120,7 +120,8 @@ impl MegarepoSyncConfig for SqlMegarepoSyncConfig {
         _ctx: &CoreContext,
         id: &RowId,
     ) -> Result<Option<MegarepoSyncConfigEntry>> {
-        let rows = TestGetRepoConfigById::query(&self.connections.read_connection, id).await?;
+        let rows =
+            TestGetRepoConfigById::query(&self.connections.read_connection, None, id).await?;
         match rows.into_iter().next() {
             None => Ok(None),
             Some(row) => Ok(Some(row_to_entry(row)?)),
@@ -134,7 +135,7 @@ impl MegarepoSyncConfig for SqlMegarepoSyncConfig {
         bookmark: &BookmarkKey,
         version: &SyncConfigVersion,
     ) -> Result<Option<MegarepoSyncConfigEntry>> {
-        let rows = GetRepoConfigByVersion::maybe_traced_query(
+        let rows = GetRepoConfigByVersion::query(
             &self.connections.read_connection,
             ctx.client_request_info(),
             repo_id,

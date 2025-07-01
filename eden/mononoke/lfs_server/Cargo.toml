@@ -8,7 +8,7 @@ edition = "2024"
 license = "GPLv2+"
 
 [dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0.98"
 async-trait = "0.1.86"
 blobstore = { version = "0.1.0", path = "../blobstore" }
 bytes = { version = "1.9.0", features = ["serde"] }
@@ -58,7 +58,7 @@ sapling-clientinfo = { version = "0.1.0", path = "../../scm/lib/clientinfo" }
 scuba_ext = { version = "0.1.0", path = "../common/scuba_ext" }
 secure_utils = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 serde = { version = "1.0.185", features = ["derive", "rc"] }
-serde_json = { version = "1.0.140", features = ["float_roundtrip", "unbounded_depth"] }
+serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "unbounded_depth"] }
 slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 thiserror = "2.0.12"

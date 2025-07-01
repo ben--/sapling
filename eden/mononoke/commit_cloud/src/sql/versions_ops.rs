@@ -74,8 +74,13 @@ impl Get<WorkspaceVersion> for SqlCommitCloud {
         reponame: String,
         workspace: String,
     ) -> anyhow::Result<Vec<WorkspaceVersion>> {
-        let rows =
-            GetVersion::query(&self.connections.read_connection, &reponame, &workspace).await?;
+        let rows = GetVersion::query(
+            &self.connections.read_connection,
+            None,
+            &reponame,
+            &workspace,
+        )
+        .await?;
         rows.into_iter()
             .map(|(workspace, version, archived, timestamp)| {
                 Ok(WorkspaceVersion {
@@ -99,7 +104,7 @@ impl Insert<WorkspaceVersion> for SqlCommitCloud {
         workspace: String,
         data: WorkspaceVersion,
     ) -> anyhow::Result<Transaction> {
-        let (txn, _) = InsertVersion::maybe_traced_query_with_transaction(
+        let (txn, _) = InsertVersion::query_with_transaction(
             txn,
             cri,
             &reponame,
@@ -130,7 +135,7 @@ impl Update<WorkspaceVersion> for SqlCommitCloud {
     ) -> anyhow::Result<(Transaction, u64)> {
         match args {
             UpdateVersionArgs::Archive(archived) => {
-                let (txn, result) = UpdateArchive::maybe_traced_query_with_transaction(
+                let (txn, result) = UpdateArchive::query_with_transaction(
                     txn,
                     cri,
                     &cc_ctx.reponame,
@@ -141,7 +146,7 @@ impl Update<WorkspaceVersion> for SqlCommitCloud {
                 Ok((txn, result.affected_rows()))
             }
             UpdateVersionArgs::WorkspaceName(new_workspace) => {
-                let (txn, result) = UpdateWorkspaceName::maybe_traced_query_with_transaction(
+                let (txn, result) = UpdateWorkspaceName::query_with_transaction(
                     txn,
                     cri,
                     &cc_ctx.reponame,
@@ -162,6 +167,7 @@ pub async fn get_version_by_prefix(
 ) -> anyhow::Result<Vec<WorkspaceVersion>> {
     let rows = GetVersionByPrefix::query(
         &connections.read_connection,
+        None,
         &reponame,
         &prepare_prefix(&prefix),
     )

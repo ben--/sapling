@@ -8,11 +8,11 @@ edition = "2024"
 license = "GPLv2+"
 
 [dependencies]
-anyhow = "1.0.95"
+anyhow = "1.0.98"
 async-compression = { version = "0.4.9", features = ["brotli", "bzip2", "deflate", "futures-io", "gzip", "tokio", "zlib", "zstd", "zstdmt"] }
 async-stream = "0.3"
 async-trait = "0.1.86"
-base64 = "0.22.1"
+base64 = { version = "0.22.1", features = ["alloc"] }
 blobstore = { version = "0.1.0", path = "../blobstore" }
 bonsai_hg_mapping = { version = "0.1.0", path = "../bonsai_hg_mapping" }
 bookmarks = { version = "0.1.0", path = "../bookmarks" }
@@ -65,7 +65,7 @@ sapling-types = { version = "0.1.0", path = "../../scm/lib/types" }
 scuba_ext = { version = "0.1.0", path = "../common/scuba_ext" }
 serde = { version = "1.0.185", features = ["derive", "rc"] }
 serde_cbor = "0.11"
-serde_json = { version = "1.0.140", features = ["float_roundtrip", "unbounded_depth"] }
+serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "unbounded_depth"] }
 sha2 = "0.10.6"
 slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 smallvec = { version = "1.15", features = ["impl_bincode", "serde", "specialization", "union"] }
@@ -76,6 +76,7 @@ time_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/r
 time_window_counter = { version = "0.1.0", path = "../time_window_counter" }
 tokio = { version = "1.45.0", features = ["full", "test-util", "tracing"] }
 tokio-util = { version = "0.7.15", features = ["full"] }
+tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 vec1 = { version = "1", features = ["serde"] }
 
 [dev-dependencies]

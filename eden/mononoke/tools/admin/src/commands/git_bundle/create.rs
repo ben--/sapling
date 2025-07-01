@@ -21,14 +21,16 @@ use futures::Stream;
 use futures::StreamExt;
 use futures::TryStreamExt;
 use futures::stream;
+use git_types::PackfileItem;
 use gix_hash::ObjectId;
 use mononoke_api::ChangesetId;
 use mononoke_app::MononokeApp;
 use mononoke_app::args::RepoArgs;
 use packfile::bundle::BundleWriter;
+use packfile::bundle::RefNaming;
 use packfile::pack::DeltaForm;
-use packfile::types::PackfileItem;
 use protocol::generator::generate_pack_item_stream;
+use protocol::types::ChainBreakingMode;
 use protocol::types::DeltaInclusion;
 use protocol::types::PackItemStreamRequest;
 use protocol::types::PackfileItemInclusion;
@@ -171,6 +173,7 @@ pub async fn create_from_mononoke_repo(
         delta_inclusion,
         TagInclusion::AsIs,
         create_args.packfile_item_inclusion,
+        ChainBreakingMode::Stochastic,
     );
     let response = generate_pack_item_stream(ctx.clone(), &repo, request)
         .await
@@ -203,6 +206,7 @@ pub async fn create_from_mononoke_repo(
         response.num_items as u32,
         create_args.concurrency,
         DeltaForm::RefAndOffset, // Ref deltas are supported by Git when cloning from a bundle
+        RefNaming::AsIs,         // Do not rename refs
     )
     .await?;
 
@@ -283,6 +287,7 @@ async fn create_from_on_disk_repo(path: PathBuf, output_file: tokio::fs::File) -
         object_count as u32,
         1000,
         DeltaForm::RefAndOffset,
+        RefNaming::AsIs, // Do not rename refs
     )
     .await?;
     let object_stream =

@@ -24,6 +24,7 @@
 #include "eden/fs/inodes/InodeMap.h"
 #include "eden/fs/inodes/Overlay.h"
 #include "eden/fs/inodes/TreeInode.h"
+#include "eden/fs/journal/Journal.h"
 #include "eden/fs/prjfs/PrjfsChannel.h"
 #include "eden/fs/service/PrettyPrinters.h"
 #include "eden/fs/service/gen-cpp2/eden_types.h"
@@ -225,13 +226,37 @@ void loadInodes(
   loadInodes(testMount, RelativePathPiece{path}, loadType, std::nullopt, 0644);
 }
 
-CheckoutConflict
-makeConflict(ConflictType type, StringPiece path, StringPiece message = "") {
+CheckoutConflict makeConflict(
+    ConflictType type,
+    StringPiece path,
+    StringPiece message = "",
+    Dtype dtype = Dtype::UNKNOWN) {
   CheckoutConflict conflict;
   conflict.type_ref() = type;
   conflict.path_ref() = path.str();
   conflict.message_ref() = message.str();
+  conflict.dtype_ref() = dtype;
   return conflict;
+}
+
+void checkFileChangeJournalEntries(
+    std::vector<FileChangeJournalDelta>& expected_journal,
+    TestMount& mount) {
+  std::vector<bool> results;
+  size_t i = 0;
+  mount.getEdenMount()->getJournal().forEachDelta(
+      1,
+      std::nullopt,
+      [&](const FileChangeJournalDelta& current) -> bool {
+        results.push_back(expected_journal[i].isSameAction(current));
+        i++;
+        return i < expected_journal.size();
+      },
+      [&](const RootUpdateJournalDelta& /*_current*/) -> bool { return true; });
+
+  for (bool journal_result : results) {
+    EXPECT_TRUE(journal_result);
+  }
 }
 
 void testAddFile(
@@ -541,8 +566,8 @@ TEST(Checkout, modifyLoadedButNotReadyFileWithConflict) {
   auto result = std::move(waitedCheckoutFuture).get();
   EXPECT_THAT(
       result.conflicts,
-      UnorderedElementsAre(
-          makeConflict(ConflictType::MODIFIED_MODIFIED, "a/test.txt")));
+      UnorderedElementsAre(makeConflict(
+          ConflictType::MODIFIED_MODIFIED, "a/test.txt", "", Dtype::REGULAR)));
 
   // Verify that the inode was not updated
   auto postInode = mount.getFileInode("a/test.txt");
@@ -730,8 +755,17 @@ TEST(Checkout, modifyThenRevert) {
   // The checkout should report a/test.txt as a conflict
   EXPECT_THAT(
       std::move(checkoutResult).get().conflicts,
-      UnorderedElementsAre(
-          makeConflict(ConflictType::MODIFIED_MODIFIED, "a/test.txt")));
+      UnorderedElementsAre(makeConflict(
+          ConflictType::MODIFIED_MODIFIED, "a/test.txt", "", Dtype::REGULAR)));
+
+  std::vector<FileChangeJournalDelta> expected_journal;
+  expected_journal.emplace_back(
+      std::forward<FileChangeJournalDelta>(FileChangeJournalDelta(
+          RelativePathPiece("a/test.txt"),
+          dtype_t::Regular,
+          FileChangeJournalDelta::CHANGED)));
+
+  checkFileChangeJournalEntries(expected_journal, testMount);
 
 #ifndef _WIN32
   // The checkout operation updates files by replacing them, so
@@ -774,7 +808,8 @@ TEST(Checkout, modifyThenCheckoutRevisionWithoutFile) {
                              testMount.getRootInode(),
                              RootId("1"),
                              ObjectFetchContext::getNullContext(),
-                             __func__)
+                             __func__,
+                             CheckoutMode::FORCE)
                          .semi()
                          .via(executor)
                          .waitVia(executor);
@@ -782,8 +817,17 @@ TEST(Checkout, modifyThenCheckoutRevisionWithoutFile) {
 
   EXPECT_THAT(
       std::move(checkoutTo1).get().conflicts,
-      UnorderedElementsAre(
-          makeConflict(ConflictType::MODIFIED_REMOVED, "src/test.c")));
+      UnorderedElementsAre(makeConflict(
+          ConflictType::MODIFIED_REMOVED, "src/test.c", "", Dtype::REGULAR)));
+
+  std::vector<FileChangeJournalDelta> expected_journal;
+  expected_journal.emplace_back(
+      std::forward<FileChangeJournalDelta>(FileChangeJournalDelta(
+          RelativePathPiece("src/test.c"),
+          dtype_t::Regular,
+          FileChangeJournalDelta::REMOVED)));
+
+  checkFileChangeJournalEntries(expected_journal, testMount);
 }
 
 TEST(Checkout, createUntrackedFileAndCheckoutAsTrackedFile) {
@@ -823,8 +867,25 @@ TEST(Checkout, createUntrackedFileAndCheckoutAsTrackedFile) {
 
   EXPECT_THAT(
       std::move(checkoutTo2).get().conflicts,
-      UnorderedElementsAre(
-          makeConflict(ConflictType::UNTRACKED_ADDED, "src/test.c")));
+      UnorderedElementsAre(makeConflict(
+          ConflictType::UNTRACKED_ADDED, "src/test.c", "", Dtype::REGULAR)));
+
+  std::vector<FileChangeJournalDelta> expected_journal;
+#ifndef _WIN32
+  expected_journal.emplace_back(
+      std::forward<FileChangeJournalDelta>(FileChangeJournalDelta(
+          RelativePathPiece("src/test.c"),
+          dtype_t::Regular,
+          FileChangeJournalDelta::CHANGED)));
+#else
+  expected_journal.emplace_back(
+      std::forward<FileChangeJournalDelta>(FileChangeJournalDelta(
+          RelativePathPiece("src/test.c"),
+          dtype_t::Regular,
+          FileChangeJournalDelta::CREATED)));
+#endif
+
+  checkFileChangeJournalEntries(expected_journal, testMount);
 }
 
 /*
@@ -872,8 +933,28 @@ TEST(
 
   EXPECT_THAT(
       std::move(checkoutTo2).get().conflicts,
-      UnorderedElementsAre(
-          makeConflict(ConflictType::UNTRACKED_ADDED, "src/test/test.c")));
+      UnorderedElementsAre(makeConflict(
+          ConflictType::UNTRACKED_ADDED,
+          "src/test/test.c",
+          "",
+          Dtype::REGULAR)));
+
+  std::vector<FileChangeJournalDelta> expected_journal;
+#ifndef _WIN32
+  expected_journal.emplace_back(
+      std::forward<FileChangeJournalDelta>(FileChangeJournalDelta(
+          RelativePathPiece("src/test/test.c"),
+          dtype_t::Regular,
+          FileChangeJournalDelta::CHANGED)));
+#else
+  expected_journal.emplace_back(
+      std::forward<FileChangeJournalDelta>(FileChangeJournalDelta(
+          RelativePathPiece("src/test/test.c"),
+          dtype_t::Regular,
+          FileChangeJournalDelta::CREATED)));
+#endif
+
+  checkFileChangeJournalEntries(expected_journal, testMount);
 }
 
 void testAddSubdirectory(folly::StringPiece newDirPath, LoadBehavior loadType) {
@@ -937,7 +1018,7 @@ void testRemoveSubdirectory(LoadBehavior loadType) {
   destBuilder.setFile("src/main.c", "int main() { return 0; }\n");
   destBuilder.setFile("src/test/test.c", "testy tests");
 
-  // Prepare the soruce tree by adding a new subdirectory (which will be
+  // Prepare the source tree by adding a new subdirectory (which will be
   // removed when we checkout from the src to the dest tree).
   auto srcBuilder = destBuilder.clone();
   RelativePathPiece path{"src/todelete"};
@@ -1397,7 +1478,10 @@ TEST(Checkout, testSetPathObjectIdConflict) {
   EXPECT_THAT(
       std::move(result).result.conflicts_ref().value(),
       UnorderedElementsAre(makeConflict(
-          ConflictType::UNTRACKED_ADDED, "dir/dir2/dir3/file.txt")));
+          ConflictType::UNTRACKED_ADDED,
+          "dir/dir2/dir3/file.txt",
+          "",
+          Dtype::REGULAR)));
 }
 
 TEST(Checkout, testSetPathObjectIdLastCheckoutTime) {
@@ -2018,8 +2102,8 @@ TEST(Checkout, concurrent_file_to_directory_during_checkout) {
   auto result = std::move(fut).get(0ms);
   EXPECT_THAT(
       result.conflicts,
-      UnorderedElementsAre(
-          makeConflict(ConflictType::MODIFIED_REMOVED, "b.txt")));
+      UnorderedElementsAre(makeConflict(
+          ConflictType::MODIFIED_REMOVED, "b.txt", "", Dtype::REGULAR)));
 
   mount.getEdenMount()->getPrjfsChannel()->unmount({}).get();
 }
@@ -2074,8 +2158,8 @@ TEST(Checkout, concurrent_new_file_during_checkout) {
   auto result = std::move(fut).get(0ms);
   EXPECT_THAT(
       result.conflicts,
-      UnorderedElementsAre(
-          makeConflict(ConflictType::UNTRACKED_ADDED, "a/2.txt")));
+      UnorderedElementsAre(makeConflict(
+          ConflictType::UNTRACKED_ADDED, "a/2.txt", "", Dtype::REGULAR)));
 
   mount.getEdenMount()->getPrjfsChannel()->unmount({}).get();
 }
@@ -2133,8 +2217,25 @@ TEST(Checkout, concurrent_recreation_during_checkout) {
   EXPECT_THAT(
       result.conflicts,
       UnorderedElementsAre(
-          makeConflict(ConflictType::REMOVED_MODIFIED, "a/1.txt"),
-          makeConflict(ConflictType::MODIFIED_MODIFIED, "a/1.txt")));
+          makeConflict(
+              ConflictType::REMOVED_MODIFIED, "a/1.txt", "", Dtype::REGULAR),
+          makeConflict(
+              ConflictType::MODIFIED_MODIFIED, "a/1.txt", "", Dtype::REGULAR)));
+
+  std::vector<FileChangeJournalDelta> expected_journal;
+  // Only one changed here, the journal joins the two adjacent changes
+  expected_journal.emplace_back(
+      std::forward<FileChangeJournalDelta>(FileChangeJournalDelta(
+          RelativePathPiece("a/1.txt"),
+          dtype_t::Regular,
+          FileChangeJournalDelta::CHANGED)));
+  expected_journal.emplace_back(
+      std::forward<FileChangeJournalDelta>(FileChangeJournalDelta(
+          RelativePathPiece("a/1.txt"),
+          dtype_t::Regular,
+          FileChangeJournalDelta::CREATED)));
+
+  checkFileChangeJournalEntries(expected_journal, mount);
 
   mount.getEdenMount()->getPrjfsChannel()->unmount({}).get();
 }

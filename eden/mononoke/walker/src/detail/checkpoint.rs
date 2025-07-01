@@ -235,6 +235,7 @@ impl SqlCheckpoints {
             CheckpointsVersion::V1 => {
                 SelectCheckpoint::query(
                     &self.connections.read_master_connection,
+                    None,
                     &repo_id,
                     &checkpoint_name,
                 )
@@ -243,6 +244,7 @@ impl SqlCheckpoints {
             CheckpointsVersion::V2 => {
                 SelectCheckpointV2::query(
                     &self.connections.read_master_connection,
+                    None,
                     &repo_id,
                     &checkpoint_name,
                 )
@@ -273,6 +275,7 @@ impl SqlCheckpoints {
             CheckpointsVersion::V1 => {
                 InsertCheckpoint::query(
                     &self.connections.write_connection,
+                    None,
                     &[(
                         &repo_id,
                         checkpoint_name,
@@ -289,6 +292,7 @@ impl SqlCheckpoints {
             CheckpointsVersion::V2 => {
                 InsertCheckpointV2::query(
                     &self.connections.write_connection,
+                    None,
                     &[(
                         &repo_id,
                         checkpoint_name,
@@ -318,6 +322,7 @@ impl SqlCheckpoints {
             CheckpointsVersion::V1 => {
                 UpdateCheckpoint::query(
                     &self.connections.write_connection,
+                    None,
                     &repo_id,
                     checkpoint_name,
                     &checkpoint.lower_bound,
@@ -332,6 +337,7 @@ impl SqlCheckpoints {
             CheckpointsVersion::V2 => {
                 UpdateCheckpointV2::query(
                     &self.connections.write_connection,
+                    None,
                     &repo_id,
                     checkpoint_name,
                     &checkpoint.lower_bound,
@@ -359,6 +365,7 @@ impl SqlCheckpoints {
             CheckpointsVersion::V1 => {
                 FinishCheckpoint::query(
                     &self.connections.write_connection,
+                    None,
                     &repo_id,
                     checkpoint_name,
                     &checkpoint.lower_bound,
@@ -372,6 +379,7 @@ impl SqlCheckpoints {
             CheckpointsVersion::V2 => {
                 FinishCheckpointV2::query(
                     &self.connections.write_connection,
+                    None,
                     &repo_id,
                     checkpoint_name,
                     &checkpoint.lower_bound,

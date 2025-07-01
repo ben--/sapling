@@ -23,6 +23,7 @@ use bookmarks::BookmarkUpdateLogId;
 use bookmarks::BookmarksRef;
 use borrowed::borrowed;
 use changeset_info::ChangesetInfo;
+use clap::Parser;
 use clientinfo::ClientEntryPoint;
 use clientinfo::ClientInfo;
 use cloned::cloned;
@@ -48,6 +49,7 @@ use mercurial_types::blobs::HgBlobManifest;
 use metaconfig_types::ModernSyncConfig;
 use metadata::Metadata;
 use mononoke_app::MononokeApp;
+use mononoke_app::args::RepoArgs;
 use mononoke_app::args::SourceRepoArgs;
 use mononoke_macros::mononoke;
 use mononoke_types::ChangesetId;
@@ -66,6 +68,7 @@ use stats::define_stats;
 use stats::prelude::*;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
+use tracing::Instrument;
 use url::Url;
 
 use crate::ModernSyncArgs;
@@ -92,6 +95,16 @@ define_stats! {
     prefix = "mononoke.modern_sync.sync";
     changeset_processed_time_ms:  dynamic_timeseries("{}.changeset.processed.time_ms", (repo: String); Average),
     changeset_processed_count:  dynamic_timeseries("{}.changeset.processed.count", (repo: String); Sum),
+}
+
+#[derive(Parser)]
+pub struct SyncArgs {
+    #[clap(flatten)]
+    pub repo: RepoArgs,
+
+    #[clap(long)]
+    /// "Dest repo name (in case it's different from source repo name)"
+    pub dest_repo_name: Option<String>,
 }
 
 #[derive(Clone)]
@@ -121,216 +134,243 @@ pub async fn sync(
     let repo: Repo = app.open_repo_unredacted(&source_repo_arg).await?;
     let _repo_id = repo.repo_identity().id();
     let repo_name = repo.repo_identity().name().to_string();
-    let repo_blobstore = repo.repo_blobstore();
-    let mc = mc.unwrap_or_else(|| repo.mutable_counters_arc());
 
-    let config = repo
-        .repo_config
-        .modern_sync_config
-        .clone()
-        .ok_or(format_err!(
-            "No modern sync config found for repo {}",
-            repo_name
-        ))?;
+    let span = tracing::info_span!("sync", repo = %repo_name);
+    async {
+        tracing::info!("Opened {source_repo_arg:?} unredacted");
 
+        let repo_blobstore = repo.repo_blobstore();
+        let mc = mc.unwrap_or_else(|| repo.mutable_counters_arc());
+
+        let config = repo
+            .repo_config
+            .modern_sync_config
+            .clone()
+            .ok_or(format_err!(
+                "No modern sync config found for repo {}",
+                repo_name
+            ))?;
+
+        let ctx = build_context(app.clone(), &repo_name, dry_run);
+
+        let start_id = if let Some(id) = start_id_arg {
+            id
+        } else {
+            repo.mutable_counters()
+                .get_counter(&ctx, MODERN_SYNC_COUNTER_NAME)
+                .await?
+                .map(|val| val.try_into())
+                .transpose()?
+                .ok_or_else(|| {
+                    format_err!(
+                        "No start-id or mutable counter {} provided",
+                        MODERN_SYNC_COUNTER_NAME
+                    )
+                })?
+        };
+        tracing::info!("Starting sync from {}", start_id,);
+
+        let app_args = app.args::<ModernSyncArgs>()?;
+
+        let sender = build_edenfs_client(
+            ctx.clone(),
+            &app_args,
+            &dest_repo_name,
+            &config,
+            repo_blobstore,
+        )
+        .await?;
+        let sender = if let Some(sender_decorator) = sender_decorator {
+            sender_decorator(sender)
+        } else {
+            sender
+        };
+
+        tracing::info!("Established EdenAPI connection");
+
+        let send_manager = SendManager::new(
+            ctx.clone(),
+            &config,
+            repo_blobstore.clone(),
+            sender.clone(),
+            repo_name.clone(),
+            exit_file,
+            mc.clone(),
+            cancellation_requested,
+        );
+        tracing::info!("Initialized channels");
+        stat::log_sync_start(&ctx, start_id);
+
+        let bookmark = app_args.bookmark;
+        let last_entry = Arc::new(RwLock::new(None));
+        bul_util::read_bookmark_update_log(
+            &ctx,
+            BookmarkUpdateLogId(start_id),
+            exec_type,
+            repo.bookmark_update_log_arc(),
+            config.single_db_query_entries_limit as u64,
+        )
+        .then(|entries| {
+            cloned!(
+                repo,
+                repo_name,
+                mc,
+                sender,
+                mut send_manager,
+                last_entry,
+                bookmark,
+                config
+            );
+            borrowed!(ctx);
+            async move {
+                match entries {
+                    Err(e) => {
+                        tracing::info!(
+                            "Found error while getting bookmark update log entry {:#?}",
+                            e
+                        );
+                        Err(e)
+                    }
+                    Ok(entries) if entries.is_empty() => {
+                        send_manager
+                            .send_changesets(vec![ChangesetMessage::Log((repo_name, Some(0)))])
+                            .await?;
+
+                        tokio::time::sleep(SLEEP_INTERVAL_WHEN_CAUGHT_UP).await;
+                        Ok(())
+                    }
+                    Ok(mut entries) => {
+                        tracing::info!("Read {} entries", entries.len(),);
+                        entries = entries
+                            .iter()
+                            .filter_map(|entry| {
+                                if entry.bookmark_name.name().as_str() == bookmark {
+                                    Some(entry.clone())
+                                } else {
+                                    tracing::warn!(
+                                        "Ignoring entry with id {} from branch {}",
+                                        entry.id,
+                                        entry.bookmark_name,
+                                    );
+                                    None
+                                }
+                            })
+                            .collect::<Vec<BookmarkUpdateLogEntry>>();
+                        tracing::info!("{} entries left after filtering", entries.len());
+
+                        if app_args.flatten_bul && !entries.is_empty() {
+                            let original_size = entries.len();
+                            let flattened_bul = bul_util::group_entries(entries);
+                            tracing::info!(
+                                "Grouped {} entries into {} macro-entries",
+                                original_size,
+                                flattened_bul.len()
+                            );
+                            entries = flattened_bul;
+                        }
+
+                        for entry in entries {
+                            let now = std::time::Instant::now();
+
+                            process_bookmark_update_log_entry(
+                                ctx,
+                                &config,
+                                &repo,
+                                &entry,
+                                &send_manager,
+                                sender.clone(),
+                                config.chunk_size as u64,
+                                app_args.log_to_ods,
+                                *last_entry.read().await,
+                                mc.clone(),
+                            )
+                            .await
+                            .inspect(|_| {
+                                stat::log_bookmark_update_entry_done(
+                                    ctx,
+                                    &repo_name,
+                                    &entry,
+                                    now.elapsed(),
+                                );
+                            })
+                            .inspect_err(|e| {
+                                stat::log_bookmark_update_entry_error(
+                                    ctx,
+                                    &repo_name,
+                                    &entry,
+                                    e,
+                                    now.elapsed(),
+                                );
+                            })?;
+                            *last_entry.write().await = entry.to_changeset_id;
+                        }
+                        Ok(())
+                    }
+                }
+            }
+        })
+        .try_collect::<()>()
+        .await?;
+
+        // Wait for the last commit to be synced before exiting
+        let (finish_tx, finish_rx) = oneshot::channel();
+        send_manager
+            .send_changeset(ChangesetMessage::NotifyCompletion(finish_tx))
+            .await?;
+        let _ = finish_rx.await?;
+
+        Ok(())
+    }
+    .instrument(span)
+    .await
+}
+
+pub fn build_context(app: Arc<MononokeApp>, repo_name: &str, dry_run: bool) -> CoreContext {
     let mut metadata = Metadata::default();
     metadata.add_client_info(ClientInfo::default_with_entry_point(
         ClientEntryPoint::ModernSync,
     ));
 
-    let scuba = stat::new(app.clone(), &metadata, &repo_name, dry_run);
+    let scuba = stat::new(app.clone(), &metadata, repo_name, dry_run);
     let session_container = SessionContainer::builder(app.fb)
         .metadata(Arc::new(metadata))
         .build();
 
-    let ctx = session_container
+    session_container
         .new_context(app.logger().clone(), scuba)
-        .clone_with_repo_name(&repo_name.clone());
+        .clone_with_repo_name(repo_name)
+}
 
-    borrowed!(ctx);
-    let start_id = if let Some(id) = start_id_arg {
-        id
+pub async fn build_edenfs_client(
+    ctx: CoreContext,
+    app_args: &ModernSyncArgs,
+    repo_name: &str,
+    config: &ModernSyncConfig,
+    repo_blobstore: &RepoBlobstore,
+) -> Result<Arc<dyn EdenapiSender + Send + Sync>> {
+    let url = if let Some(socket) = app_args.dest_socket {
+        // Only for integration tests
+        format!("{}:{}/edenapi/", &config.url, socket)
     } else {
-        repo.mutable_counters()
-            .get_counter(ctx, MODERN_SYNC_COUNTER_NAME)
-            .await?
-            .map(|val| val.try_into())
-            .transpose()?
-            .ok_or_else(|| {
-                format_err!(
-                    "No start-id or mutable counter {} provided",
-                    MODERN_SYNC_COUNTER_NAME
-                )
-            })?
+        format!("{}/edenapi/", &config.url)
     };
 
-    let app_args = app.args::<ModernSyncArgs>()?;
+    let tls_args = app_args
+        .tls_params
+        .clone()
+        .ok_or_else(|| format_err!("TLS params not found for repo {}", repo_name))?;
 
-    let sender: Arc<dyn EdenapiSender + Send + Sync> = {
-        let url = if let Some(socket) = app_args.dest_socket {
-            // Only for integration tests
-            format!("{}:{}/edenapi/", &config.url, socket)
-        } else {
-            format!("{}/edenapi/", &config.url)
-        };
-
-        let tls_args = app_args
-            .tls_params
-            .clone()
-            .ok_or_else(|| format_err!("TLS params not found for repo {}", repo_name))?;
-
-        Arc::new(RetryEdenapiSender::new(Arc::new(
-            DefaultEdenapiSenderBuilder::new(
-                Url::parse(&url)?,
-                dest_repo_name.clone(),
-                tls_args,
-                ctx.clone(),
-                repo_blobstore.clone(),
-            )
-            .build()
-            .await?,
-        )))
-    };
-    let sender = if let Some(sender_decorator) = sender_decorator {
-        sender_decorator(sender)
-    } else {
-        sender
-    };
-
-    tracing::info!("Established EdenAPI connection");
-
-    let send_manager = SendManager::new(
-        ctx.clone(),
-        &config,
-        repo_blobstore.clone(),
-        sender.clone(),
-        repo_name.clone(),
-        exit_file,
-        mc.clone(),
-        cancellation_requested,
-    );
-    tracing::info!("Initialized channels");
-    stat::log_sync_start(ctx, start_id);
-
-    let bookmark = app_args.bookmark;
-    let last_entry = Arc::new(RwLock::new(None));
-    bul_util::read_bookmark_update_log(
-        ctx,
-        BookmarkUpdateLogId(start_id),
-        exec_type,
-        repo.bookmark_update_log_arc(),
-        config.single_db_query_entries_limit as u64,
-    )
-    .then(|entries| {
-        cloned!(
-            repo,
-            repo_name,
-            mc,
-            sender,
-            mut send_manager,
-            last_entry,
-            bookmark,
-            config
-        );
-        borrowed!(ctx);
-        async move {
-            match entries {
-                Err(e) => {
-                    tracing::info!(
-                        "Found error while getting bookmark update log entry {:#?}",
-                        e
-                    );
-                    Err(e)
-                }
-                Ok(entries) if entries.is_empty() => {
-                    send_manager
-                        .send_changesets(vec![ChangesetMessage::Log((repo_name, Some(0)))])
-                        .await?;
-
-                    tokio::time::sleep(SLEEP_INTERVAL_WHEN_CAUGHT_UP).await;
-                    Ok(())
-                }
-                Ok(mut entries) => {
-                    tracing::info!("Read {} entries", entries.len());
-                    entries = entries
-                        .iter()
-                        .filter_map(|entry| {
-                            if entry.bookmark_name.name().as_str() == bookmark {
-                                Some(entry.clone())
-                            } else {
-                                tracing::warn!(
-                                    "Ignoring entry with id {} from branch {}",
-                                    entry.id,
-                                    entry.bookmark_name,
-                                );
-                                None
-                            }
-                        })
-                        .collect::<Vec<BookmarkUpdateLogEntry>>();
-                    tracing::info!("{} entries left after filtering", entries.len());
-
-                    if app_args.flatten_bul && !entries.is_empty() {
-                        let original_size = entries.len();
-                        let flattened_bul = bul_util::group_entries(entries);
-                        tracing::info!(
-                            "Grouped {} entries into {} macro-entries",
-                            original_size,
-                            flattened_bul.len()
-                        );
-                        entries = flattened_bul;
-                    }
-
-                    for entry in entries {
-                        let now = std::time::Instant::now();
-
-                        process_bookmark_update_log_entry(
-                            ctx,
-                            &config,
-                            &repo,
-                            &entry,
-                            &send_manager,
-                            sender.clone(),
-                            config.chunk_size as u64,
-                            app_args.log_to_ods,
-                            *last_entry.read().await,
-                            mc.clone(),
-                        )
-                        .await
-                        .inspect(|_| {
-                            stat::log_bookmark_update_entry_done(
-                                ctx,
-                                &repo_name,
-                                &entry,
-                                now.elapsed(),
-                            );
-                        })
-                        .inspect_err(|e| {
-                            stat::log_bookmark_update_entry_error(
-                                ctx,
-                                &repo_name,
-                                &entry,
-                                e,
-                                now.elapsed(),
-                            );
-                        })?;
-                        *last_entry.write().await = entry.to_changeset_id;
-                    }
-                    Ok(())
-                }
-            }
-        }
-    })
-    .try_collect::<()>()
-    .await?;
-
-    // Wait for the last commit to be synced before exiting
-    let (finish_tx, finish_rx) = oneshot::channel();
-    send_manager
-        .send_changeset(ChangesetMessage::NotifyCompletion(finish_tx))
-        .await?;
-    let _ = finish_rx.await?;
-
-    Ok(())
+    Ok(Arc::new(RetryEdenapiSender::new(Arc::new(
+        DefaultEdenapiSenderBuilder::new(
+            Url::parse(&url)?,
+            repo_name.to_string(),
+            tls_args,
+            ctx.clone(),
+            repo_blobstore.clone(),
+        )
+        .build()
+        .await?,
+    ))))
 }
 
 pub async fn process_bookmark_update_log_entry(
@@ -595,13 +635,14 @@ pub async fn process_bookmark_update_log_entry(
         ))
         .await?;
 
-    bul_util::update_remaining_moves(
-        entry.id,
-        repo_name.clone(),
-        ctx.clone(),
-        repo.bookmark_update_log_arc(),
-    )
-    .await?;
+    // FIXME(acampi) Temporarily disable to fix stuck sync: https://fb.workplace.com/groups/1708850869939124/permalink/1994176751406533/
+    // bul_util::update_remaining_moves(
+    //     entry.id,
+    //     repo_name.clone(),
+    //     ctx.clone(),
+    //     repo.bookmark_update_log_arc(),
+    // )
+    // .await?;
 
     Ok(())
 }
@@ -882,11 +923,11 @@ fn classify_entries(
 
 pub(crate) async fn get_unsharded_repo_args(
     app: Arc<MononokeApp>,
-    app_args: &ModernSyncArgs,
+    sync_args: &SyncArgs,
 ) -> Result<(SourceRepoArgs, String, String)> {
-    let source_repo: Repo = app.open_repo(&app_args.repo).await?;
+    let source_repo: Repo = app.open_repo(&sync_args.repo).await?;
     let source_repo_name = source_repo.repo_identity.name().to_string();
-    let target_repo_name = app_args
+    let target_repo_name = sync_args
         .dest_repo_name
         .clone()
         .unwrap_or(source_repo_name.clone());

@@ -17,8 +17,8 @@ use bookmarks::BookmarkKey;
 use bookmarks::Freshness;
 use context::CoreContext;
 use cross_repo_sync::BookmarkDiff;
+use cross_repo_sync::CommitSyncData;
 use cross_repo_sync::CommitSyncOutcome;
-use cross_repo_sync::CommitSyncer;
 use cross_repo_sync::Repo as CrossRepo;
 use cross_repo_sync::Syncers;
 use cross_repo_sync::find_bookmark_diff;
@@ -79,7 +79,7 @@ pub(crate) async fn loop_forever<R: CrossRepo>(
         let enabled = push_redirection_config
             .get(ctx, small_repo_id)
             .await?
-            .map_or(false, |enables| enables.public_push);
+            .is_some_and(|enables| enables.public_push);
 
         if enabled {
             let res = validate(ctx, &syncers, large_repo_name, small_repo_name).await;
@@ -138,8 +138,8 @@ async fn validate<R: CrossRepo>(
     large_repo_name: &str,
     small_repo_name: &str,
 ) -> Result<(), ValidationError> {
-    let commit_syncer = &syncers.small_to_large;
-    let diffs = find_bookmark_diff(ctx.clone(), commit_syncer).await?;
+    let commit_sync_data = &syncers.small_to_large;
+    let diffs = find_bookmark_diff(ctx.clone(), commit_sync_data).await?;
 
     info!(ctx.logger(), "got {} bookmark diffs", diffs.len());
     for diff in diffs {
@@ -290,10 +290,10 @@ async fn check_large_bookmark_history<R: CrossRepo>(
 
 async fn remap<R: CrossRepo>(
     ctx: &CoreContext,
-    commit_syncer: &CommitSyncer<R>,
+    commit_sync_data: &CommitSyncData<R>,
     source_cs_id: &ChangesetId,
 ) -> Result<Option<ChangesetId>, Error> {
-    let maybe_commit_sync_outcome = commit_syncer
+    let maybe_commit_sync_outcome = commit_sync_data
         .get_commit_sync_outcome(ctx, *source_cs_id)
         .await?;
 

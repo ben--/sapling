@@ -51,7 +51,7 @@ pub(crate) fn prefetch_manager(
     tree_resolver: Arc<dyn ReadTreeManifest>,
     file_store: Arc<dyn FileStore>,
     current_commit_id: Arc<RwLock<Option<String>>>,
-    detector: Arc<walkdetector::Detector>,
+    detector: walkdetector::Detector,
 ) -> flume::Sender<()> {
     // We don't need to queue up lots of kicks. A single one will suffice.
     let (send, recv) = flume::bounded(1);
@@ -80,12 +80,23 @@ pub(crate) fn prefetch_manager(
         // Shared TreeManifest object to avoid duplicative tree fetching/deserialization.
         let mut current_manifest: Option<TreeManifest> = None;
 
+        let mut last_iteration_time = None;
+
         // Wait for kicks, or otherwise check every second. The intermittent check is important
         // to notice that walks have stopped (because the kicks only happen on file/dir access,
         // which could altogether stop).
         while let Ok(_) | Err(flume::RecvTimeoutError::Timeout) =
             recv.recv_timeout(Duration::from_secs(1))
         {
+            // Add a small sleep to make sure we aren't busy looping when there is non-stop walk activity.
+            let now = Instant::now();
+            if last_iteration_time
+                .replace(now)
+                .is_some_and(|t| now.duration_since(t) < Duration::from_millis(1))
+            {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+
             let current_commit_id = match current_commit_id.read().as_ref() {
                 Some(commit_hex) => match HgId::from_hex(commit_hex.as_bytes()) {
                     Ok(hgid) => hgid,
@@ -303,7 +314,7 @@ enum PrefetchWork {
 fn prefetch(
     manifest: impl Manifest + Send + Sync + 'static,
     file_store: Arc<dyn FileStore>,
-    walk_detector: Arc<walkdetector::Detector>,
+    walk_detector: walkdetector::Detector,
     work: PrefetchWork,
 ) -> PrefetchHandle {
     // The cancelation works by making our thread below return early when the handle has been
@@ -568,7 +579,7 @@ mod test {
             FileMetadata::new(bar_hgid, types::FileType::Regular),
         )?;
 
-        let detector = Arc::new(walkdetector::Detector::new());
+        let detector = walkdetector::Detector::new();
 
         // Prefetch for "dir/" at depth=0 (i.e. "dir/*").
         let handle = prefetch(
@@ -644,7 +655,7 @@ mod test {
             store.insert_data(Default::default(), &path, text.as_ref())?;
         }
 
-        let detector = Arc::new(walkdetector::Detector::new());
+        let detector = walkdetector::Detector::new();
 
         // Prefetch directories for "" at depth=0 (i.e. "*"). This should fetch directory "dir".
         let handle = prefetch(
@@ -693,8 +704,6 @@ mod test {
         let mut detector = walkdetector::Detector::new();
         detector.set_walk_threshold(2);
 
-        let detector = Arc::new(detector);
-
         let store = Arc::new(TestStore::new());
 
         let file_store = store.clone() as Arc<dyn FileStore>;
@@ -732,8 +741,8 @@ mod test {
         );
 
         // Trigger a walk.
-        detector.file_loaded(&foo_path);
-        detector.file_loaded(&bar_path);
+        detector.file_loaded(&foo_path, 0);
+        detector.file_loaded(&bar_path, 0);
 
         kick_manager.send(())?;
 
@@ -789,8 +798,6 @@ mod test {
         let mut detector = walkdetector::Detector::new();
         detector.set_walk_threshold(2);
 
-        let detector = Arc::new(detector);
-
         let mut rng = ChaChaRng::from_seed([0u8; 32]);
         let stub_commit_id = HgId::random(&mut rng);
 
@@ -804,10 +811,10 @@ mod test {
         );
 
         // Trigger a directory walk for each of "dir1" and "dir2".
-        detector.dir_loaded(RepoPath::from_static_str("dir1/a"), 0, 0);
-        detector.dir_loaded(RepoPath::from_static_str("dir1/b"), 0, 0);
-        detector.dir_loaded(RepoPath::from_static_str("dir2/a"), 0, 0);
-        detector.dir_loaded(RepoPath::from_static_str("dir2/b"), 0, 0);
+        detector.dir_loaded(RepoPath::from_static_str("dir1/a"), 0, 0, 0);
+        detector.dir_loaded(RepoPath::from_static_str("dir1/b"), 0, 0, 0);
+        detector.dir_loaded(RepoPath::from_static_str("dir2/a"), 0, 0, 0);
+        detector.dir_loaded(RepoPath::from_static_str("dir2/b"), 0, 0, 0);
 
         kick_manager.send(())?;
 

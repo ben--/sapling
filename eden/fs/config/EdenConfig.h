@@ -263,8 +263,6 @@ class EdenConfig : private ConfigSettingManager {
       false,
       this};
 
-  // [config]
-
   /**
    * If EdenFS should auto migrate non inmemory inode catalogs to inmemory on
    * Windows.
@@ -273,6 +271,33 @@ class EdenConfig : private ConfigSettingManager {
       "core:migrate_existing_to_in_memory_catalog",
       true,
       this};
+
+  /**
+   * At startup, EdenFS will attempt to set its memory priority to the following
+   * value. If the value is null, EdenFS will not attempt to set its priority.
+   *
+   * On macOS, this corresponds to a Jetsam Priority value (as of June
+   * 2025, these values range between 0 (lowest, most likely to be killed), and
+   * 210 (highest, least likely to be killed).
+   *
+   * On Linux, this corresponds to the
+   * oom_score_adj value (as of June 2025, these values range between -1000
+   * (highest, least likely to be killed) and 1000 (most likely to be killed).
+   */
+  ConfigSetting<std::optional<int32_t>> daemonTargetMemoryPriority{
+      "core:daemon-target-memory-priority",
+      std::nullopt,
+      this};
+
+  /**
+   * Similar to the above config, but sets the PrivHelper's priority instead.
+   */
+  ConfigSetting<std::optional<int32_t>> privHelperTargetMemoryPriority{
+      "core:priv-helper-target-memory-priority",
+      std::nullopt,
+      this};
+
+  // [config]
 
   /**
    * How often the on-disk config information should be checked for changes.
@@ -407,6 +432,19 @@ class EdenConfig : private ConfigSettingManager {
       false,
       this};
 
+  /**
+   * Configures the amount of time workers should spend completing outstanding
+   * requests during Thrift server shutdown. If the timeout is reached, the
+   * server exits immediately (i.e. crashes).
+   *
+   * Must be used with thriftLeakOutstandingRequestsWhenServerStops to have any
+   * effect.
+   */
+  ConfigSetting<std::chrono::nanoseconds> thriftWorkersJoinTimeout{
+      "thrift:workers-join-timeout",
+      std::chrono::seconds(120),
+      this};
+
   // [ssl]
 
   ConfigSetting<AbsolutePath> clientCertificate{
@@ -443,7 +481,7 @@ class EdenConfig : private ConfigSettingManager {
       this};
 
   /**
-   * Mininum number of inodes that need to be loaded  before triggering the
+   * Minimum number of inodes that need to be loaded  before triggering the
    * periodic NFS Garbage Collector (GC). If the loaded inode count is below
    * this number, a GC will be skipped. A value of 0 will effectively skip this
    * check.
@@ -587,6 +625,16 @@ class EdenConfig : private ConfigSettingManager {
   ConfigSetting<bool> asyncRocksDbLocalStore{
       "store:async-rocksdb-local-store",
       false,
+      this};
+
+  /**
+   * Controls the number of threads to use when processing RocksDbLocalStore
+   * operations. At the time of writing, this is also used to drive the
+   * RocksDbLocalStore's periodic GC.
+   */
+  ConfigSetting<uint8_t> rocksDbIoPoolNumThreads{
+      "store:rocksdb-io-pool-num-threads",
+      12,
       this};
 
   ConfigSetting<bool> warmTreeAuxCacheIfTreeFromLocalStore{
@@ -843,7 +891,7 @@ class EdenConfig : private ConfigSettingManager {
       this};
 
   /**
-   * Wether we should validate that files on disk match their inode state after
+   * Whether we should validate that files on disk match their inode state after
    * checkout. We won't validate all of the loaded files or even the ones
    * changed by checkout, but just a handful of the files that were loaded and
    * changed by checkout. The next few configs control how many files and how
@@ -1186,7 +1234,7 @@ class EdenConfig : private ConfigSettingManager {
   /**
    *  The minimum number of items to keep in SCM status cache
    */
-  ConfigSetting<size_t> scmStatusCacheMininumItems{
+  ConfigSetting<size_t> scmStatusCacheMinimumItems{
       "hg:scm-status-cache-min-items",
       3,
       this};
@@ -1195,6 +1243,7 @@ class EdenConfig : private ConfigSettingManager {
    *  The maximum number of entries we want to cache within a single status
    */
   ConfigSetting<size_t> scmStatusCacheMaxEntriesPerItem{
+      // @lint-ignore SPELL
       "hg:scm-status-cache-max-entires-per-item",
       10000,
       this};
@@ -1692,7 +1741,7 @@ class EdenConfig : private ConfigSettingManager {
 
   /**
    * A number from 0 - x to determine how often we should log file access
-   * events. This is currectly agnostic to the type of file access. If this
+   * events. This is currently agnostic to the type of file access. If this
    * is not at 100%, we will not log filenames and we will only log directory
    * paths. In the following equation, 1/x = percentage, x is this variable.
    * For 50% rollout, 1/x = .5, so x = 2, so this would be set to 2. 0
@@ -1803,6 +1852,12 @@ class EdenConfig : private ConfigSettingManager {
    * symlink into the state dir ("off mount").
    */
   ConfigSetting<bool> offMountRepoDir{"clone:off-mount-repo-dir", false, this};
+
+  /**
+   * Controls the timeout (in seconds) that is set when calling the Thrift mount
+   * endpoint from the CLI during clone. A value of 0 means no timeout.
+   */
+  ConfigSetting<size_t> cloneMountTimeout{"clone:mount-timeout", 20, this};
 
   // [fsck]
 
@@ -1950,7 +2005,7 @@ class EdenConfig : private ConfigSettingManager {
    * The key to use for blake3 hash computation.
    * The key must be exactly 32 bytes.
    *
-   * !!!IMPORATNT!!!
+   * !!!IMPORTANT!!!
    * The value of this config must be kept in sync with the source control
    * server as well as all the tools that will compute a Blake3 hash from file
    * content. To this effect, this config is overwritten early at startup in

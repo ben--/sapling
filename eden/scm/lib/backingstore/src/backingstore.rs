@@ -83,7 +83,7 @@ struct Inner {
 
     prefetch_send: flume::Sender<()>,
     walk_mode: WalkMode,
-    walk_detector: Arc<walkdetector::Detector>,
+    walk_detector: walkdetector::Detector,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -137,6 +137,7 @@ impl BackingStore {
                 &extra_configs,
                 touch_file_mtime(),
                 parent_hint.clone(),
+                walkdetector::Detector::new(),
             )?)),
             parent_hint,
         })
@@ -147,6 +148,7 @@ impl BackingStore {
         extra_configs: &[PinnedConfig],
         touch_file_mtime: Option<SystemTime>,
         parent_hint: Arc<RwLock<Option<String>>>,
+        mut walk_detector: walkdetector::Detector,
     ) -> Result<Inner> {
         constructors::init();
 
@@ -197,7 +199,10 @@ impl BackingStore {
         )?;
 
         let repo = Arc::new(repo);
-        let mut walk_detector = walkdetector::Detector::new();
+
+        // First reset to default config values to handle the case when a config item was specified
+        // in the sl config, but is no longer present (i.e. need to revert to the in-code default).
+        walk_detector.reset_config();
 
         if let Some(threshold) = config.get_opt("backingstore", "walk-threshold")? {
             walk_detector.set_walk_threshold(threshold);
@@ -222,8 +227,6 @@ impl BackingStore {
         if let Some(timeout) = config.get_opt("backingstore", "walk-gc-timeout")? {
             walk_detector.set_gc_timeout(timeout);
         }
-
-        let walk_detector = Arc::new(walk_detector);
 
         let prefetch_send = if walk_mode == WalkMode::Prefetch {
             prefetch_manager(
@@ -385,7 +388,7 @@ impl BackingStore {
     }
 
     #[instrument(level = "trace", skip(self))]
-    pub fn witness_file_read(&self, path: &RepoPath, local: bool) {
+    pub fn witness_file_read(&self, path: &RepoPath, local: bool, pid: u32) {
         let inner = self.inner.load();
 
         if inner.walk_mode == WalkMode::Off {
@@ -393,10 +396,10 @@ impl BackingStore {
         }
 
         let walk_changed = if local {
-            inner.walk_detector.file_read(path);
+            inner.walk_detector.file_read(path, pid);
             false
         } else {
-            inner.walk_detector.file_loaded(path)
+            inner.walk_detector.file_loaded(path, pid)
         };
         if !walk_changed {
             return;
@@ -412,6 +415,7 @@ impl BackingStore {
         local: bool,
         num_files: usize,
         num_dirs: usize,
+        pid: u32,
     ) {
         let inner = self.inner.load();
 
@@ -420,10 +424,12 @@ impl BackingStore {
         }
 
         let walk_changed = if local {
-            inner.walk_detector.dir_read(path);
+            inner.walk_detector.dir_read(path, num_files, num_dirs, pid);
             false
         } else {
-            inner.walk_detector.dir_loaded(path, num_files, num_dirs)
+            inner
+                .walk_detector
+                .dir_loaded(path, num_files, num_dirs, pid)
         };
         if !walk_changed {
             return;
@@ -517,6 +523,7 @@ impl BackingStore {
                 &inner.extra_configs,
                 new_mtime,
                 self.parent_hint.clone(),
+                inner.walk_detector.clone(),
             ) {
                 Ok(mut new_inner) => {
                     new_inner.last_reload = Instant::now();

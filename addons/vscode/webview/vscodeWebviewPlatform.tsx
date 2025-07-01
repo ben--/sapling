@@ -7,7 +7,7 @@
 
 import type {Platform} from 'isl/src/platform';
 import type {ThemeColor} from 'isl/src/theme';
-import type {MessageBusStatus, RepoRelativePath} from 'isl/src/types';
+import type {AbsolutePath, MessageBusStatus, RepoRelativePath} from 'isl/src/types';
 import type {Comparison} from 'shared/Comparison';
 import type {Json} from 'shared/typeUtils';
 import type {VSCodeAPI} from './vscodeApi';
@@ -15,7 +15,6 @@ import type {VSCodeAPI} from './vscodeApi';
 import {browserClipboardCopy} from 'isl/src/platform/browerPlatformImpl';
 import {registerCleanup} from 'isl/src/utils';
 import {lazy} from 'react';
-import {Internal} from './Internal';
 import {vscodeApi} from './vscodeApi';
 
 const VSCodeSettings = lazy(() => import('./VSCodeSettings'));
@@ -139,7 +138,26 @@ const vscodeWebviewPlatform: Platform = {
     },
   },
 
-  AdditionalDebugContent: Internal.AdditionalDebugContent,
+  suggestedEdits: {
+    onDidChangeSuggestedEdits(callback) {
+      window.clientToServerAPI?.postMessage({
+        type: 'platform/subscribeToSuggestedEdits',
+      });
+      return (
+        window.clientToServerAPI?.onMessageOfType('platform/onDidChangeSuggestedEdits', event => {
+          callback(event.files);
+        }) ?? {dispose: () => {}}
+      );
+    },
+    resolveSuggestedEdits: (action: 'accept' | 'reject', files: Array<AbsolutePath>) => {
+      window.clientToServerAPI?.postMessage({
+        type: 'platform/resolveSuggestedEdits',
+        action,
+        files,
+      });
+    },
+  },
+
   AddMoreCwdsHint,
   Settings: VSCodeSettings,
 

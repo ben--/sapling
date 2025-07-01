@@ -112,11 +112,12 @@ impl BonsaiTagMapping for SqlBonsaiTagMapping {
     }
 
     async fn get_all_entries(&self) -> Result<Vec<BonsaiTagMappingEntry>> {
-        let results = SelectAllMappings::query(&self.connections.read_connection, &self.repo_id)
-            .await
-            .with_context(|| {
-                format!("Failure in fetching all entries for repo {}", self.repo_id)
-            })?;
+        let results =
+            SelectAllMappings::query(&self.connections.read_connection, None, &self.repo_id)
+                .await
+                .with_context(|| {
+                    format!("Failure in fetching all entries for repo {}", self.repo_id)
+                })?;
 
         let values = results
             .into_iter()
@@ -137,7 +138,7 @@ impl BonsaiTagMapping for SqlBonsaiTagMapping {
         } else {
             &self.connections.read_connection
         };
-        let results = SelectMappingByTagName::query(connection, &self.repo_id, &tag_name)
+        let results = SelectMappingByTagName::query(connection, None, &self.repo_id, &tag_name)
             .await
             .with_context(|| {
                 format!(
@@ -167,6 +168,7 @@ impl BonsaiTagMapping for SqlBonsaiTagMapping {
     ) -> Result<Vec<BonsaiTagMappingEntry>> {
         let results = SelectMappingByChangeset::query(
             &self.connections.read_connection,
+            None,
             &self.repo_id,
             changeset_ids.as_slice(),
         )
@@ -193,6 +195,7 @@ impl BonsaiTagMapping for SqlBonsaiTagMapping {
     ) -> Result<Vec<BonsaiTagMappingEntry>> {
         let results = SelectMappingByTagHash::query(
             &self.connections.read_connection,
+            None,
             &self.repo_id,
             tag_hashes.as_slice(),
         )
@@ -228,6 +231,7 @@ impl BonsaiTagMapping for SqlBonsaiTagMapping {
             .collect();
         AddOrUpdateBonsaiTagMapping::query(
             &self.connections.write_connection,
+            None,
             converted_entries.as_slice(),
         )
         .await
@@ -243,6 +247,7 @@ impl BonsaiTagMapping for SqlBonsaiTagMapping {
     async fn delete_mappings_by_name(&self, tag_names: Vec<String>) -> Result<()> {
         DeleteBonsaiTagMappingsByName::query(
             &self.connections.write_connection,
+            None,
             &self.repo_id,
             tag_names.as_slice(),
         )

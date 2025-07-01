@@ -150,7 +150,6 @@ export type TrackEventName =
   | 'OptimisticFilesStateForceResolved'
   | 'OptimisticCommitsStateForceResolved'
   | 'OptimisticConflictsStateForceResolved'
-  | 'OptInToNewISLAgain'
   | 'OpenAllFiles'
   | 'OpenComments'
   | 'QueueOperation'
@@ -172,8 +171,10 @@ export type TrackEventName =
   | 'WarnAboutRebaseOffWarm'
   | 'WarnAboutDistantRebase'
   | 'WarnAboutRebaseOntoMaster'
+  | 'WarnAboutSuggestedEdits'
   | 'SaplingISLUriHandlerHandle'
-  | 'CommitInfoFieldEditFieldClick';
+  | 'CommitInfoFieldEditFieldClick'
+  | 'ReadWarmCommit';
 
 export type TrackErrorName =
   | 'BlameError'
@@ -194,4 +195,5 @@ export type TrackErrorName =
   | 'UploadImageError'
   | 'VSCodeCommandError'
   | 'VSCodeActivationError'
-  | 'SplitSuggestionError';
+  | 'SplitSuggestionError'
+  | 'FileReadError';

@@ -9,7 +9,6 @@
 Default config file for testing
 """
 
-import os
 from typing import Optional
 
 
@@ -111,6 +110,7 @@ hostname=testhost
 servicetype=local
 servicelocation={testtmp}
 remotebookmarkssync=True
+supported-url-regex=.*
 
 [experimental]
 changegroup3=True

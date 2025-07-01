@@ -25,12 +25,12 @@ license = "MIT"
 name = "commitcloudsubscriber"
 
 [dependencies]
-anyhow = "1.0.95"
-base64 = "0.22.1"
+anyhow = "1.0.98"
+base64 = { version = "0.22.1", features = ["alloc"] }
 filetime = "0.2.25"
 hostcaps = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
 lazy_static = { version = "1.5", features = ["spin_no_std"], default-features = false }
-log = { version = "0.4.22", features = ["kv_unstable"] }
+log = { version = "0.4.22", features = ["kv_unstable", "kv_unstable_std"] }
 mime = "0.3.14"
 parking_lot = { version = "0.12.1", features = ["send_guard"] }
 regex = "1.11.1"
@@ -38,7 +38,7 @@ reqwest = { version = "0.11.18", features = ["blocking", "cookies", "gzip", "jso
 sapling-configset = { version = "0.1.0", path = "../config/set" }
 sapling-identity = { version = "0.1.0", path = "../identity" }
 serde = { version = "1.0.185", features = ["derive", "rc"] }
-serde_json = { version = "1.0.140", features = ["float_roundtrip", "unbounded_depth"] }
+serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "unbounded_depth"] }
 thiserror = "2.0.12"
 tokio = { version = "1.45.0", features = ["full", "test-util", "tracing"] }
 

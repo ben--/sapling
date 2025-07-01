@@ -63,8 +63,8 @@ use changeset_info::ChangesetInfo;
 use context::CoreContext;
 use cross_repo_sync::CandidateSelectionHint;
 use cross_repo_sync::CommitSyncContext;
+use cross_repo_sync::CommitSyncData;
 use cross_repo_sync::CommitSyncRepos;
-use cross_repo_sync::CommitSyncer;
 use cross_repo_sync::RepoProvider;
 use cross_repo_sync::Target;
 use cross_repo_sync::get_all_repo_submodule_deps;
@@ -399,9 +399,9 @@ async fn maybe_push_redirector<'a, R: MononokeRepo>(
         let submodule_deps = get_all_repo_submodule_deps(ctx, repo.clone(), repo_provider).await?;
 
         let large_repo_id = base.common_commit_sync_config.large_repo_id;
-        let large_repo = repos.get_by_id(large_repo_id.id()).ok_or_else(|| {
-            MononokeError::InvalidRequest(format!("Large repo '{}' not found", large_repo_id))
-        })?;
+        let large_repo = repos
+            .get_by_id(large_repo_id.id())
+            .ok_or_else(|| MononokeError::LargeRepoNotFound(format!("{large_repo_id}")))?;
         Ok(Some(
             PushRedirectorArgs::new(
                 large_repo,
@@ -1627,9 +1627,9 @@ impl<R: MononokeRepo> RepoContext<R> {
     /// Setting exact to true will return result only if there's exact match for the requested
     /// commit - rather than commit with equivalent working copy (which happens in case the source
     /// commit rewrites to nothing in target repo).
-    pub async fn xrepo_commit_lookup<'a, 'b>(
-        &'a self,
-        other: &'a Self,
+    pub async fn xrepo_commit_lookup(
+        &self,
+        other: &Self,
         specifier: impl Into<ChangesetSpecifier>,
         maybe_candidate_selection_hint_args: Option<CandidateSelectionHintArgs>,
         sync_behaviour: XRepoLookupSyncBehaviour,
@@ -1645,7 +1645,7 @@ impl<R: MononokeRepo> RepoContext<R> {
         let (_small_repo, _large_repo) =
             get_small_and_large_repos(self.repo.as_ref(), other.repo.as_ref())?;
 
-        let repo_provider: RepoProvider<'a, R> = Arc::new(move |repo_id| {
+        let repo_provider: RepoProvider<'_, R> = Arc::new(move |repo_id| {
             Box::pin({
                 let repos = self.repos.clone();
 
@@ -1677,14 +1677,14 @@ impl<R: MononokeRepo> RepoContext<R> {
             MononokeError::InvalidRequest(format!("unknown commit specifier {}", specifier))
         })?;
 
-        let commit_syncer =
-            CommitSyncer::new(&self.ctx, commit_sync_repos, self.live_commit_sync_config());
+        let commit_sync_data =
+            CommitSyncData::new(&self.ctx, commit_sync_repos, self.live_commit_sync_config());
 
         if sync_behaviour == XRepoLookupSyncBehaviour::SyncIfAbsent {
             let _ = sync_commit(
                 &self.ctx,
                 changeset,
-                &commit_syncer,
+                &commit_sync_data,
                 candidate_selection_hint,
                 CommitSyncContext::ScsXrepoLookup,
                 false,
@@ -1692,7 +1692,7 @@ impl<R: MononokeRepo> RepoContext<R> {
             .await?;
         }
         use cross_repo_sync::CommitSyncOutcome::*;
-        let maybe_cs_id = commit_syncer
+        let maybe_cs_id = commit_sync_data
             .get_commit_sync_outcome(&self.ctx, changeset)
             .await?
             .and_then(|outcome| match outcome {

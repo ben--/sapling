@@ -104,7 +104,7 @@ impl SqlRepoReadWriteStatus {
         &self,
         hgsql_name: &HgsqlName,
     ) -> Result<Option<(HgMononokeReadWrite, Option<String>)>, Error> {
-        GetReadWriteStatus::query(&self.read_connection, hgsql_name.as_ref())
+        GetReadWriteStatus::query(&self.read_connection, None, hgsql_name.as_ref())
             .await
             .map(|rows| rows.into_iter().next())
     }
@@ -117,6 +117,7 @@ impl SqlRepoReadWriteStatus {
     ) -> Result<bool, Error> {
         SetReadWriteStatus::query(
             &self.write_connection,
+            None,
             &[(hgsql_name.as_ref(), state, reason)],
         )
         .await
@@ -264,6 +265,7 @@ mod test {
                 .clone()
                 .unwrap()
                 .write_connection,
+            None,
             &[("repo", &HgMononokeReadWrite::MononokeWrite)],
         )
         .await
@@ -277,6 +279,7 @@ mod test {
                 .clone()
                 .unwrap()
                 .write_connection,
+            None,
             &[("repo", &HgMononokeReadWrite::HgWrite)],
         )
         .await
@@ -303,6 +306,7 @@ mod test {
                 .clone()
                 .unwrap()
                 .write_connection,
+            None,
             &[("repo", &HgMononokeReadWrite::HgWrite, "reason123")],
         )
         .await
@@ -334,6 +338,7 @@ mod test {
                 .clone()
                 .unwrap()
                 .write_connection,
+            None,
             &[("other_repo", &HgMononokeReadWrite::MononokeWrite)],
         )
         .await
@@ -350,6 +355,7 @@ mod test {
                 .clone()
                 .unwrap()
                 .write_connection,
+            None,
             &[("repo", &HgMononokeReadWrite::MononokeWrite)],
         )
         .await

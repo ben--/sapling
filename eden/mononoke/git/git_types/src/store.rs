@@ -17,13 +17,13 @@ use filestore::fetch_with_size;
 use filestore::hash_bytes;
 use futures::TryStreamExt;
 use gix_hash::ObjectId;
-use gix_object::WriteTo;
 use mononoke_types::BlobstoreBytes;
 use mononoke_types::hash::GitSha1;
 use mononoke_types::hash::RichGitSha1;
-use packfile::types::BaseObject;
-use packfile::types::GitPackfileBaseItem;
 
+use crate::BaseObject;
+use crate::GitPackfileBaseItem;
+use crate::ObjectContent;
 use crate::errors::GitError;
 
 const GIT_OBJECT_PREFIX: &str = "git_object";
@@ -92,23 +92,18 @@ pub async fn fetch_non_blob_git_object<B>(
     ctx: &CoreContext,
     blobstore: &B,
     git_hash: &gix_hash::oid,
-) -> Result<gix_object::Object, GitError>
+) -> Result<ObjectContent, GitError>
 where
     B: Blobstore,
 {
     // In git, empty tree is a special object: it's present in every git repo and not persisted in
     // the storage.
     if git_hash == ObjectId::empty_tree(gix_hash::Kind::Sha1) {
-        return Ok(gix_object::Object::Tree(gix_object::Tree::empty()));
+        return Ok(ObjectContent::empty_tree());
     }
     let raw_bytes = fetch_non_blob_git_object_bytes(ctx, blobstore, git_hash).await?;
-    let object = gix_object::ObjectRef::from_loose(raw_bytes.as_ref()).map_err(|e| {
-        GitError::InvalidContent(
-            git_hash.to_hex().to_string(),
-            anyhow::anyhow!(e.to_string()).into(),
-        )
-    })?;
-    Ok(object.into())
+    let object_content = ObjectContent::try_from_loose(raw_bytes)?;
+    Ok(object_content)
 }
 
 /// Enum determining the state of the git header in the raw
@@ -220,16 +215,11 @@ pub async fn fetch_git_object(
     ctx: &CoreContext,
     blobstore: Arc<dyn Blobstore>,
     identifier: &GitIdentifier,
-) -> Result<gix_object::Object> {
+) -> Result<ObjectContent> {
     let raw_bytes =
         fetch_git_object_bytes(ctx, blobstore, identifier, HeaderState::Included).await?;
-    let object = gix_object::ObjectRef::from_loose(raw_bytes.as_ref()).map_err(|e| {
-        GitError::InvalidContent(
-            identifier.basic_sha().to_hex().to_string(),
-            anyhow::anyhow!(e.to_string()).into(),
-        )
-    })?;
-    Ok(object.into())
+    let object_content = ObjectContent::try_from_loose(raw_bytes)?;
+    Ok(object_content)
 }
 
 /// Free function for uploading packfile item for git base object and
@@ -316,7 +306,6 @@ mod test {
     use anyhow::Result;
     use bonsai_hg_mapping::BonsaiHgMapping;
     use bookmarks::Bookmarks;
-    use bytes::Bytes;
     use commit_graph::CommitGraph;
     use commit_graph::CommitGraphWriter;
     use fbinit::FacebookInit;
@@ -325,14 +314,14 @@ mod test {
     use gix_object::Object;
     use gix_object::Tag;
     use mononoke_macros::mononoke;
-    use packfile::types::BaseObject;
-    use packfile::types::to_vec_bytes;
     use repo_blobstore::RepoBlobstore;
     use repo_blobstore::RepoBlobstoreArc;
     use repo_derived_data::RepoDerivedData;
     use repo_identity::RepoIdentity;
 
     use super::*;
+    use crate::BaseObject;
+    use crate::test_util::object_content_from_owned_object;
 
     #[facet::container]
     #[derive(Clone)]
@@ -352,16 +341,16 @@ mod test {
         let repo: TestRepo = fixtures::Linear::get_repo(fb).await;
         let ctx = CoreContext::test_mock(fb);
         let blobstore = repo.repo_blobstore_arc();
-        // Create a random Git object and get its bytes
-        let tag_bytes = Bytes::from(to_vec_bytes(&Object::Tag(Tag {
+        // Create a random base object. This will be used later for comparison
+        let object_content = object_content_from_owned_object(Object::Tag(Tag {
             target: ObjectId::empty_tree(gix_hash::Kind::Sha1),
             target_kind: gix_object::Kind::Tree,
             name: "TreeTag".into(),
             tagger: None,
             message: "Tag pointing to a tree".into(),
             pgp_signature: None,
-        }))?);
-        // Create the base object using the Git bytes. This will be used later for comparison
+        }))?;
+        let tag_bytes = object_content.raw();
         let base_object = BaseObject::new(tag_bytes.clone())?;
         // Get the hash of the created Git object
         let tag_hash = base_object.hash().to_owned();

@@ -16,12 +16,8 @@ use anyhow::Result;
 use async_trait::async_trait;
 use clap::Parser;
 use clap::ValueEnum;
-use clientinfo::ClientEntryPoint;
-use clientinfo::ClientInfo;
 use cloned::cloned;
 use context::CoreContext;
-use context::SessionContainer;
-use metadata::Metadata;
 use mononoke_app::MononokeApp;
 #[cfg(fbcode_build)]
 use mononoke_app::args::MonitoringArgs;
@@ -31,7 +27,6 @@ use mutable_counters::MutableCounters;
 #[cfg(fbcode_build)]
 mod stats;
 
-use crate::ModernSyncArgs;
 use crate::sender::edenapi::EdenapiSender;
 use crate::sender::edenapi::FilterEdenapiSender;
 use crate::sender::edenapi::MethodFilter;
@@ -70,6 +65,9 @@ pub struct CommandArgs {
         help = "How often to report stats, in seconds"
     )]
     stat_interval: u64,
+
+    #[clap(flatten, next_help_heading = "SYNC OPTIONS")]
+    sync_args: crate::sync::SyncArgs,
 }
 
 #[derive(Clone, Default)]
@@ -122,10 +120,9 @@ impl MutableCounters for MemoryMutableCounters {
 
 pub async fn run(app: MononokeApp, args: CommandArgs) -> Result<()> {
     let app = Arc::new(app);
-    let app_args = &app.args::<ModernSyncArgs>()?;
     let (source_repo_args, source_repo_name, dest_repo_name) =
-        get_unsharded_repo_args(app.clone(), app_args).await?;
-    let ctx = new_context(&app);
+        get_unsharded_repo_args(app.clone(), &args.sync_args).await?;
+    let ctx = crate::sync::build_context(app.clone(), &source_repo_name, false);
 
     let benchmark_mode = args.mode;
     let mc = MemoryMutableCounters::new();
@@ -206,18 +203,4 @@ pub async fn run(app: MononokeApp, args: CommandArgs) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn new_context(app: &MononokeApp) -> CoreContext {
-    let mut metadata = Metadata::default();
-    metadata.add_client_info(ClientInfo::default_with_entry_point(
-        ClientEntryPoint::ModernSync,
-    ));
-
-    let scuba = app.environment().scuba_sample_builder.clone();
-    let session_container = SessionContainer::builder(app.fb)
-        .metadata(Arc::new(metadata))
-        .build();
-
-    session_container.new_context(app.logger().clone(), scuba)
 }

@@ -450,6 +450,9 @@ pub struct DerivedDataTypesConfig {
 
     /// For each Derived Data Type, what batch size should we use during derivation?
     pub derivation_batch_sizes: HashMap<DerivableType, usize>,
+
+    /// Config for inferred copy from
+    pub inferred_copy_from_config: Option<InferredCopyFromConfig>,
 }
 
 /// What type of unode derived data to generate
@@ -487,6 +490,14 @@ pub struct GitDeltaManifestV2Config {
     pub delta_chunk_size: u64,
 }
 
+/// Config for inferred copy from
+#[derive(Eq, Clone, Copy, Debug, Default, PartialEq)]
+pub struct InferredCopyFromConfig {
+    /// When trying to find file copies using basename, how many levels of
+    /// directories from the repo root should we perform the search?
+    pub dir_level_for_basename_lookup: usize,
+}
+
 /// Config for remote derivation
 #[derive(Eq, Clone, Debug, PartialEq)]
 pub enum RemoteDerivationConfig {
@@ -500,7 +511,7 @@ pub enum RemoteDerivationConfig {
 
 impl RepoConfig {
     /// Returns the address of the primary metadata database, or None if there is none.
-    pub fn primary_metadata_db_address(&self) -> Option<String> {
+    pub fn primary_metadata_db_address(&self) -> Option<&str> {
         self.storage_config.metadata.primary_address()
     }
 }
@@ -1246,9 +1257,9 @@ impl MetadataDatabaseConfig {
     }
 
     /// The address of the primary metadata database, if this is a remote metadata database.
-    pub fn primary_address(&self) -> Option<String> {
+    pub fn primary_address(&self) -> Option<&str> {
         match self {
-            MetadataDatabaseConfig::Remote(remote) => Some(remote.primary.db_address.clone()),
+            MetadataDatabaseConfig::Remote(remote) => Some(&remote.primary.db_address),
             MetadataDatabaseConfig::OssRemote(_) => None,
             MetadataDatabaseConfig::Local(_) => None,
         }
@@ -1840,6 +1851,10 @@ pub struct MononokeCasSyncConfig {
     pub main_bookmark_to_sync: String,
     /// Enabling it would expand the sync to all the bookmarks
     pub sync_all_bookmarks: bool,
+    /// CAS use case to use for uploading public commits
+    pub use_case_public: String,
+    /// CAS use case to use for uploading draft commits
+    pub use_case_draft: String,
 }
 
 /// Repo-specific configuration parameters for modern sync job for a specific job variant

@@ -10,6 +10,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use clap::Parser;
+use serde_json;
 
 use super::dbio;
 use super::fsio;
@@ -35,18 +36,10 @@ pub enum BenchCmd {
         #[clap(long, default_value_t = types::DEFAULT_CHUNK_SIZE)]
         chunk_size: usize,
 
-        /// Read file content through file system or via thrift.
-        #[clap(long, value_enum, default_value_t = types::ReadFileMethod::Fs)]
-        read_file_via: types::ReadFileMethod,
-
         /// Whether to drop memory caches after writes.
         /// Only supported on linux and needs root privilege to run.
         #[clap(long)]
         drop_kernel_caches: bool,
-
-        /// Disable progress bars in benchmarks
-        #[clap(long)]
-        no_progress: bool,
     },
 
     #[clap(about = "Run database I/O benchmarks")]
@@ -62,10 +55,6 @@ pub enum BenchCmd {
         /// Size of each chunk in bytes
         #[clap(long, default_value_t = types::DEFAULT_CHUNK_SIZE)]
         chunk_size: usize,
-
-        /// Disable progress bars in benchmarks
-        #[clap(long)]
-        no_progress: bool,
     },
 
     #[clap(about = "Run traversal benchmark")]
@@ -74,9 +63,13 @@ pub enum BenchCmd {
         #[clap(long)]
         dir: String,
 
-        /// Read file content through file system or via thrift during the traversal.
-        #[clap(long, value_enum, default_value_t = types::ReadFileMethod::Fs, help="read via fs or thrift")]
-        read_file_via: types::ReadFileMethod,
+        /// Path to fbsource directory, required for thrift IO
+        #[clap(long)]
+        thrift_io: Option<String>,
+
+        /// Max number of files to read when traversing the file system
+        #[clap(long, default_value_t = types::DEFAULT_MAX_NUMBER_OF_FILES_FOR_TRAVERSAL)]
+        max_files: usize,
 
         /// Whether to follow symbolic links during traversal
         #[clap(long)]
@@ -85,6 +78,10 @@ pub enum BenchCmd {
         /// Disable progress bars in benchmarks
         #[clap(long)]
         no_progress: bool,
+
+        /// Output results in JSON format
+        #[clap(long)]
+        json: bool,
     },
 }
 
@@ -96,13 +93,8 @@ impl crate::Subcommand for BenchCmd {
                 test_dir,
                 number_of_files,
                 chunk_size,
-                read_file_via,
                 drop_kernel_caches,
-                no_progress: _,
-            } => match r#gen::TestDir::validate(
-                test_dir,
-                *read_file_via == types::ReadFileMethod::Thrift,
-            ) {
+            } => match r#gen::TestDir::validate(test_dir) {
                 Ok(test_dir) => {
                     let random_data = r#gen::RandomData::new(*number_of_files, *chunk_size);
                     println!(
@@ -115,29 +107,15 @@ impl crate::Subcommand for BenchCmd {
                         "{}",
                         fsio::bench_write_mfmd(&test_dir, &random_data, *drop_kernel_caches)?
                     );
-                    match read_file_via {
-                        types::ReadFileMethod::Fs => {
-                            println!("{}", fsio::bench_fs_read_mfmd(&test_dir, &random_data)?);
-                        }
-                        types::ReadFileMethod::Thrift => {
-                            println!(
-                                "{}",
-                                fsio::bench_thrift_read_mfmd(&test_dir, &random_data).await?
-                            );
-                        }
-                    }
+                    println!("{}", fsio::bench_fs_read_mfmd(&test_dir, &random_data)?);
+
                     println!(
                         "{}",
                         fsio::bench_write_sfmd(&test_dir, &random_data, *drop_kernel_caches)?
                     );
-                    match read_file_via {
-                        types::ReadFileMethod::Fs => {
-                            println!("{}", fsio::bench_fs_read_sfmd(&test_dir, &random_data)?);
-                        }
-                        types::ReadFileMethod::Thrift => {
-                            println!("{}", fsio::bench_thrift_read_sfmd(&test_dir).await?);
-                        }
-                    }
+
+                    println!("{}", fsio::bench_fs_read_sfmd(&test_dir, &random_data)?);
+
                     test_dir.remove()?;
                 }
                 Err(e) => return Err(e),
@@ -146,8 +124,7 @@ impl crate::Subcommand for BenchCmd {
                 test_dir,
                 number_of_files,
                 chunk_size,
-                no_progress: _,
-            } => match r#gen::TestDir::validate(test_dir, false) {
+            } => match r#gen::TestDir::validate(test_dir) {
                 Ok(test_dir) => {
                     let random_data = r#gen::RandomData::new(*number_of_files, *chunk_size);
                     println!(
@@ -177,36 +154,41 @@ impl crate::Subcommand for BenchCmd {
             },
             Self::Traversal {
                 dir,
-                read_file_via,
+                thrift_io,
+                max_files,
                 follow_symlinks,
                 no_progress,
+                json,
             } => {
-                println!(
-                    "Running filesystem traversal benchmark on directory: {}",
-                    dir
-                );
-                match read_file_via {
-                    types::ReadFileMethod::Fs => {
-                        println!(
-                            "{}",
-                            traversal::bench_traversal_fs_read(
-                                dir,
-                                *follow_symlinks,
-                                *no_progress
-                            )?
-                        );
-                    }
-                    types::ReadFileMethod::Thrift => {
-                        println!(
-                            "{}",
-                            traversal::bench_traversal_thrift_read(
-                                dir,
-                                *follow_symlinks,
-                                *no_progress
-                            )
-                            .await?
-                        );
-                    }
+                if !*json {
+                    println!(
+                        "Running filesystem traversal benchmark on directory: {}",
+                        dir
+                    );
+                }
+
+                let benchmark_result = if thrift_io.is_some() {
+                    traversal::bench_traversal_thrift_read(
+                        dir,
+                        *max_files,
+                        *follow_symlinks,
+                        *no_progress,
+                        thrift_io.as_deref(),
+                    )
+                    .await?
+                } else {
+                    traversal::bench_traversal_fs_read(
+                        dir,
+                        *max_files,
+                        *follow_symlinks,
+                        *no_progress,
+                    )?
+                };
+
+                if *json {
+                    println!("{}", serde_json::to_string_pretty(&benchmark_result)?);
+                } else {
+                    println!("{}", benchmark_result);
                 }
             }
         }

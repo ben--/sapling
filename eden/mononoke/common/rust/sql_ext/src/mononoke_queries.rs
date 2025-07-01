@@ -99,72 +99,41 @@ macro_rules! mononoke_queries {
                 #[allow(unused_imports)]
                 use $crate::_macro_internal::*;
 
-                // Not possible to retry query with transaction
-                #[allow(unused_imports)]
-                pub use [<$name Impl>]::query_with_transaction;
-                #[allow(unused_imports)]
-                use [<$name Impl>]::commented_query_with_transaction;
-
                 #[allow(dead_code)]
-                pub async fn traced_query_with_transaction(
-                    transaction: Transaction,
-                    cri: &ClientRequestInfo,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<(Transaction, Vec<($( $rtype, )*)>)> {
-                    let cri = serde_json::to_string(cri)?;
-                    commented_query_with_transaction(transaction, &cri, $( $pname, )* $( $lname, )*).await
-                }
-
-                #[allow(dead_code)]
-                pub async fn maybe_traced_query_with_transaction(
-                    transaction: Transaction,
-                    cri: Option<&ClientRequestInfo>,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<(Transaction, Vec<($( $rtype, )*)>)> {
-                    match cri {
-                        Some(cri) => traced_query_with_transaction(transaction, &cri, $( $pname, )* $( $lname, )*).await,
-                        None => query_with_transaction(transaction, $( $pname, )* $( $lname, )*).await
-                    }
-                }
-
-                #[allow(dead_code)]
-                pub async fn query(
-                    connection: &Connection,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<Vec<($( $rtype, )*)>> {
+                pub async fn query<'a, C>(
+                    connection: &'a Connection,
+                    cri: C,
+                    $( $pname: &'a $ptype, )*
+                    $( $lname: &'a [ $ltype ], )*
+                ) -> Result<Vec<($( $rtype, )*)>>
+                where
+                    C: Into<Option<&'a ClientRequestInfo>>
+                {
+                    let cri_str = cri.into().map(|cri| serde_json::to_string(cri)).transpose()?;
                     query_with_retry_no_cache(
-                        || [<$name Impl>]::query(connection, $( $pname, )* $( $lname, )*),
+                        || async {
+                            let (res, _opt_stats) = [<$name Impl>]::commented_query(connection, cri_str.as_deref(), $( $pname, )* $( $lname, )*).await?;
+
+                            // TODO(T223577767): log stats
+                            Ok(res)
+                        },
                     ).await
                 }
 
                 #[allow(dead_code)]
-                pub async fn traced_query(
-                    connection: &Connection,
-                    cri: &ClientRequestInfo,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<Vec<($( $rtype, )*)>> {
-                    let cri = serde_json::to_string(cri)?;
-                    query_with_retry_no_cache(
-                        || [<$name Impl>]::commented_query(connection, &cri, $( $pname, )* $( $lname, )*),
-                    ).await
+                pub async fn query_with_transaction<'a, C>(
+                    transaction: Transaction,
+                    cri: C,
+                    $( $pname: &'a $ptype, )*
+                    $( $lname: &'a [ $ltype ], )*
+                ) -> Result<(Transaction, Vec<($( $rtype, )*)>)>
+                where
+                    C: Into<Option<&'a ClientRequestInfo>>
+                {
+                    let cri_str = cri.into().map(|cri| serde_json::to_string(cri)).transpose()?;
+                    [<$name Impl>]::commented_query_with_transaction(transaction, cri_str.as_deref(), $( $pname, )* $( $lname, )*).await
                 }
 
-                #[allow(dead_code)]
-                pub async fn maybe_traced_query(
-                    connection: &Connection,
-                    cri: Option<&ClientRequestInfo>,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<Vec<($( $rtype, )*)>> {
-                    match cri {
-                        Some(cri) => traced_query(connection, &cri, $( $pname, )* $( $lname, )*).await,
-                        None => query(connection, $( $pname, )* $( $lname, )*).await
-                    }
-                }
             }
 
             $crate::mononoke_queries! { $( $rest )* }
@@ -195,47 +164,20 @@ macro_rules! mononoke_queries {
                 #[allow(unused_imports)]
                 use $crate::_macro_internal::*;
 
-                // Not possible to retry query with transaction
-                #[allow(unused_imports)]
-                pub use [<$name Impl>]::query_with_transaction;
-                #[allow(unused_imports)]
-                use [<$name Impl>]::commented_query_with_transaction;
-
-
                 #[allow(dead_code)]
-                pub async fn traced_query_with_transaction(
-                    transaction: Transaction,
-                    cri: &ClientRequestInfo,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<(Transaction, Vec<($( $rtype, )*)>)> {
-                    let cri = serde_json::to_string(cri)?;
-                    commented_query_with_transaction(transaction, &cri, $( $pname, )* $( $lname, )*).await
-                }
-
-                #[allow(dead_code)]
-                pub async fn maybe_traced_query_with_transaction(
-                    transaction: Transaction,
-                    cri: Option<&ClientRequestInfo>,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<(Transaction, Vec<($( $rtype, )*)>)> {
-                    match cri {
-                        Some(cri) => traced_query_with_transaction(transaction, &cri, $( $pname, )* $( $lname, )*).await,
-                        None => query_with_transaction(transaction, $( $pname, )* $( $lname, )*).await
-                    }
-                }
-
-                #[allow(dead_code)]
-                pub async fn query(
+                pub async fn query<'a, C>(
                     config: &SqlQueryConfig,
                     cache_ttl: Option<std::time::Duration>,
-                    connection: &Connection,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<Vec<($( $rtype, )*)>> {
+                    connection: &'a Connection,
+                    cri: C,
+                    $( $pname: &'a $ptype, )*
+                    $( $lname: &'a [ $ltype ], )*
+                ) -> Result<Vec<($( $rtype, )*)>>
+                where
+                    C: Into<Option<&'a ClientRequestInfo>>
+                {
+                    // Prepare cache data
                     let mut hasher = Hash128::with_seed(0);
-
                     $(
                         $pname.hash(&mut hasher);
                     )*
@@ -248,63 +190,52 @@ macro_rules! mononoke_queries {
                     let key = hasher.finish_ext();
                     let data = CacheData {key, config: config.caching.as_ref(), cache_ttl };
 
+                    // Convert ClientRequestInfo to string if present
+                    let cri_str = cri.into().map(|cri| serde_json::to_string(cri)).transpose()?;
 
-                    Ok(query_with_retry(
-                        data,
-                        || async move { Ok(CachedQueryResult([<$name Impl>]::query(connection, $( $pname, )* $( $lname, )*).await?)) },
-                    ).await?.0)
-                }
+                    // Execute query with caching
+                    match cri_str {
+                        Some(cri) => {
+                            Ok(query_with_retry(
+                                data,
+                                || {
+                                    let cri = cri.clone();
+                                    async move {
+                                        let (res, _opt_stats) = [<$name Impl>]::commented_query(connection, cri.as_str(), $( $pname, )* $( $lname, )*).await?;
 
-                #[allow(dead_code)]
-                pub async fn traced_query(
-                    config: &SqlQueryConfig,
-                    cache_ttl: Option<std::time::Duration>,
-                    connection: &Connection,
-                    cri: &ClientRequestInfo,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<Vec<($( $rtype, )*)>> {
-                    let mut hasher = Hash128::with_seed(0);
-
-                    $(
-                        $pname.hash(&mut hasher);
-                    )*
-                    $(
-                        $lname.hash(&mut hasher);
-                    )*
-                    stringify!($name).hash(&mut hasher);
-                    stringify!($mysql_q).hash(&mut hasher);
-                    stringify!($sqlite_q).hash(&mut hasher);
-                    let key = hasher.finish_ext();
-                    let data = CacheData {key, config: config.caching.as_ref(), cache_ttl };
-
-
-                    let cri = serde_json::to_string(cri)?;
-                    Ok(query_with_retry(
-                        data,
-                        || {
-                        let cri = cri.clone();
-                        async move {
-                            Ok(CachedQueryResult([<$name Impl>]::commented_query(connection, &cri, $( $pname, )* $( $lname, )*).await?))
+                                        // TODO(T223577767): log stats
+                                        Ok(CachedQueryResult(res))
+                                    }
+                                },
+                            ).await?.0)
+                        },
+                        None => {
+                            Ok(query_with_retry(
+                                data,
+                                || async move {
+                                    let (res, _opt_stats) = [<$name Impl>]::commented_query(connection, None, $( $pname, )* $( $lname, )*).await?;
+                                    // TODO(T223577767): log stats
+                                    Ok(CachedQueryResult(res))
+                                },
+                            ).await?.0)
                         }
-        },
-                    ).await?.0)
+                    }
                 }
 
                 #[allow(dead_code)]
-                pub async fn maybe_traced_query(
-                    config: &SqlQueryConfig,
-                    cache_ttl: Option<std::time::Duration>,
-                    connection: &Connection,
-                    cri: Option<&ClientRequestInfo>,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<Vec<($( $rtype, )*)>> {
-                    match cri {
-                        Some(cri) => traced_query(config, cache_ttl, connection, &cri, $( $pname, )* $( $lname, )*).await,
-                        None => query(config, cache_ttl, connection, $( $pname, )* $( $lname, )*).await
-                    }
+                pub async fn query_with_transaction<'a, C>(
+                    transaction: Transaction,
+                    cri: C,
+                    $( $pname: &'a $ptype, )*
+                    $( $lname: &'a [ $ltype ], )*
+                ) -> Result<(Transaction, Vec<($( $rtype, )*)>)>
+                where
+                    C: Into<Option<&'a ClientRequestInfo>>
+                {
+                    let cri_str = cri.into().map(|cri| serde_json::to_string(cri)).transpose()?;
+                    [<$name Impl>]::commented_query_with_transaction(transaction, cri_str.as_deref(), $( $pname, )* $( $lname, )*).await
                 }
+
             }
 
             $crate::mononoke_queries! { $( $rest )* }
@@ -352,73 +283,34 @@ macro_rules! mononoke_queries {
                 #[allow(unused_imports)]
                 use $crate::_macro_internal::*;
 
-                // Not possible to retry query with transaction
-                #[allow(unused_imports)]
-                pub use [<$name Impl>]::query_with_transaction;
-                #[allow(unused_imports)]
-                use [<$name Impl>]::commented_query_with_transaction;
-
-
                 #[allow(dead_code)]
-                pub async fn traced_query_with_transaction(
-                    transaction: Transaction,
-                    cri: &ClientRequestInfo,
-                    values: &[($( & $vtype, )*)],
-                    $( $pname: & $ptype ),*
-                ) -> Result<(Transaction, WriteResult)> {
-                    let cri = serde_json::to_string(cri)?;
-                    commented_query_with_transaction(transaction, &cri, values $( , $pname )*)
-                        .await
-                }
-
-                #[allow(dead_code)]
-                pub async fn maybe_traced_query_with_transaction(
-                    transaction: Transaction,
-                    cri: Option<&ClientRequestInfo>,
-                    values: &[($( & $vtype, )*)],
-                    $( $pname: & $ptype ),*
-                ) -> Result<(Transaction, WriteResult)> {
-                    match cri {
-                        Some(cri) => traced_query_with_transaction(transaction, &cri, values $( , $pname )*).await,
-                        None => query_with_transaction(transaction, values $( , $pname )*).await
-                    }
-                }
-
-                #[allow(dead_code)]
-                pub async fn query(
-                    connection: &Connection,
-                    values: &[($( & $vtype, )*)],
-                    $( $pname: & $ptype ),*
-                ) -> Result<WriteResult> {
+                pub async fn query<'a, C>(
+                    connection: &'a Connection,
+                    cri: C,
+                    values: &'a[($( & $vtype, )*)],
+                    $( $pname: &'a $ptype ),*
+                ) -> Result<WriteResult>
+                where
+                    C: Into<Option<&'a ClientRequestInfo>>
+                {
+                    let cri_str = cri.into().map(|cri| serde_json::to_string(cri)).transpose()?;
                     query_with_retry_no_cache(
-                        || [<$name Impl>]::query(connection, values $( , $pname )* ),
+                        || [<$name Impl>]::commented_query(connection, cri_str.as_deref(), values $( , $pname )* ),
                     ).await
                 }
 
                 #[allow(dead_code)]
-                pub async fn traced_query(
-                    connection: &Connection,
-                    cri: &ClientRequestInfo,
-                    values: &[($( & $vtype, )*)],
-                    $( $pname: & $ptype ),*
-                ) -> Result<WriteResult> {
-                    let cri = serde_json::to_string(cri)?;
-                    query_with_retry_no_cache(
-                        || [<$name Impl>]::commented_query(connection, &cri, values $( , $pname )* ),
-                    ).await
-                }
-
-                #[allow(dead_code)]
-                pub async fn maybe_traced_query(
-                    connection: &Connection,
-                    cri: Option<&ClientRequestInfo>,
-                    values: &[($( & $vtype, )*)],
-                    $( $pname: & $ptype ),*
-                ) -> Result<WriteResult> {
-                    match cri {
-                        Some(cri) => traced_query(connection, &cri, values $( , $pname )*).await,
-                        None => query(connection, values $( , $pname )*).await
-                    }
+                pub async fn query_with_transaction<'a, C>(
+                    transaction: Transaction,
+                    cri: C,
+                    values: &'a[($( & $vtype, )*)],
+                    $( $pname: &'a $ptype ),*
+                ) -> Result<(Transaction, WriteResult)>
+                where
+                    C: Into<Option<&'a ClientRequestInfo>>
+                {
+                    let cri_str = cri.into().map(|cri| serde_json::to_string(cri)).transpose()?;
+                    [<$name Impl>]::commented_query_with_transaction(transaction, cri_str.as_deref(), values $( , $pname )*).await
                 }
             }
 
@@ -467,72 +359,34 @@ macro_rules! mononoke_queries {
                 #[allow(unused_imports)]
                 use $crate::_macro_internal::*;
 
-                // Not possible to retry query with transaction
-                #[allow(unused_imports)]
-                pub use [<$name Impl>]::query_with_transaction;
-                #[allow(unused_imports)]
-                use [<$name Impl>]::commented_query_with_transaction;
-
                 #[allow(dead_code)]
-                pub async fn traced_query_with_transaction(
-                    transaction: Transaction,
-                    cri: &ClientRequestInfo,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<(Transaction, WriteResult)> {
-                    let cri = serde_json::to_string(cri)?;
-                    commented_query_with_transaction(transaction, &cri $( , $pname )* $( , $lname )*)
-                        .await
-                }
-
-                #[allow(dead_code)]
-                pub async fn maybe_traced_query_with_transaction(
-                    transaction: Transaction,
-                    cri: Option<&ClientRequestInfo>,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<(Transaction, WriteResult)> {
-                    match cri {
-                        Some(cri) => traced_query_with_transaction(transaction, &cri $( , $pname )* $( , $lname )*).await,
-                        None => query_with_transaction(transaction $( , $pname )* $( , $lname )*).await
-                    }
-                }
-
-                #[allow(dead_code)]
-                pub async fn query(
-                    connection: &Connection,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<WriteResult> {
+                pub async fn query<'a, C>(
+                    connection: &'a Connection,
+                    cri: C,
+                    $( $pname: &'a $ptype, )*
+                    $( $lname: &'a [ $ltype ], )*
+                ) -> Result<WriteResult>
+                where
+                    C: Into<Option<&'a ClientRequestInfo>>
+                {
+                    let cri_str = cri.into().map(|cri| serde_json::to_string(cri)).transpose()?;
                     query_with_retry_no_cache(
-                        || [<$name Impl>]::query(connection, $( $pname, )* $( $lname, )*),
+                        || [<$name Impl>]::commented_query(connection, cri_str.as_deref(), $( $pname, )* $( $lname, )*),
                     ).await
                 }
 
                 #[allow(dead_code)]
-                pub async fn traced_query(
-                    connection: &Connection,
-                    cri: &ClientRequestInfo,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<WriteResult> {
-                    let cri = serde_json::to_string(cri)?;
-                    query_with_retry_no_cache(
-                        || [<$name Impl>]::commented_query(connection, &cri, $( $pname, )* $( $lname, )*),
-                    ).await
-                }
-
-                #[allow(dead_code)]
-                pub async fn maybe_traced_query(
-                    connection: &Connection,
-                    cri: Option<&ClientRequestInfo>,
-                    $( $pname: & $ptype, )*
-                    $( $lname: & [ $ltype ], )*
-                ) -> Result<WriteResult> {
-                    match cri {
-                        Some(cri) => traced_query(connection, &cri, $( $pname, )* $( $lname, )*).await,
-                        None => query(connection, $( $pname, )* $( $lname, )*).await
-                    }
+                pub async fn query_with_transaction<'a, C>(
+                    transaction: Transaction,
+                    cri: C,
+                    $( $pname: &'a $ptype, )*
+                    $( $lname: &'a [ $ltype ], )*
+                ) -> Result<(Transaction, WriteResult)>
+                where
+                    C: Into<Option<&'a ClientRequestInfo>>
+                {
+                    let cri_str = cri.into().map(|cri| serde_json::to_string(cri)).transpose()?;
+                    [<$name Impl>]::commented_query_with_transaction(transaction, cri_str.as_deref() $( , $pname )* $( , $lname )*).await
                 }
             }
 
@@ -758,26 +612,28 @@ mod tests {
         let config: &SqlQueryConfig = todo!();
         let connection: &sql::Connection = todo!();
         let cri = ClientRequestInfo::new(ClientEntryPoint::Sapling);
-        TestQuery::query(connection, todo!(), todo!()).await?;
-        TestQuery::query_with_transaction(todo!(), todo!(), todo!()).await?;
-        TestQuery2::query(config, None, connection).await?;
-        TestQuery2::query(config, Some(std::time::Duration::from_secs(60)), connection).await?;
-        TestQuery2::query_with_transaction(todo!()).await?;
-        TestQuery3::query(connection, &[(&12,)]).await?;
-        TestQuery3::query_with_transaction(todo!(), &[(&12,)]).await?;
-        TestQuery4::query(connection, &"hello").await?;
-        TestQuery::traced_query(connection, &cri, todo!(), todo!()).await?;
-        TestQuery2::traced_query(config, None, connection, &cri).await?;
-        TestQuery3::traced_query(connection, &cri, &[(&12,)]).await?;
-        TestQuery4::traced_query(connection, &cri, &"hello").await?;
-        TestQuery::maybe_traced_query(connection, Some(&cri), todo!(), todo!()).await?;
-        TestQuery2::maybe_traced_query(config, None, connection, Some(&cri)).await?;
-        TestQuery3::maybe_traced_query(connection, Some(&cri), &[(&12,)]).await?;
-        TestQuery4::maybe_traced_query(connection, Some(&cri), &"hello").await?;
-        TestQuery::maybe_traced_query(connection, None, todo!(), todo!()).await?;
-        TestQuery2::maybe_traced_query(config, None, connection, None).await?;
-        TestQuery3::maybe_traced_query(connection, None, &[(&12,)]).await?;
-        TestQuery4::maybe_traced_query(connection, None, &"hello").await?;
+        TestQuery::query(connection, None, todo!(), todo!()).await?;
+        TestQuery::query_with_transaction(todo!(), None, todo!(), todo!()).await?;
+        TestQuery2::query(config, None, connection, None).await?;
+        TestQuery2::query(
+            config,
+            Some(std::time::Duration::from_secs(60)),
+            connection,
+            None,
+        )
+        .await?;
+        TestQuery2::query_with_transaction(todo!(), None).await?;
+        TestQuery3::query(connection, None, &[(&12,)]).await?;
+        TestQuery3::query_with_transaction(todo!(), None, &[(&12,)]).await?;
+        TestQuery4::query(connection, None, &"hello").await?;
+        TestQuery::query(connection, Some(&cri), todo!(), todo!()).await?;
+        TestQuery2::query(config, None, connection, Some(&cri)).await?;
+        TestQuery3::query(connection, Some(&cri), &[(&12,)]).await?;
+        TestQuery4::query(connection, Some(&cri), &"hello").await?;
+        TestQuery::query(connection, None, todo!(), todo!()).await?;
+        TestQuery2::query(config, None, connection, None).await?;
+        TestQuery3::query(connection, None, &[(&12,)]).await?;
+        TestQuery4::query(connection, None, &"hello").await?;
         Ok(())
     }
 }

@@ -107,6 +107,7 @@ impl SqlBonsaiBlobMapping {
         for shard_id in 0..self.shard_count {
             let rows = GetBlobKeysForChangesets::query(
                 &self.read_connections[shard_id],
+                None,
                 &repo_id,
                 &cs_ids[..],
             )
@@ -131,6 +132,7 @@ impl SqlBonsaiBlobMapping {
             .map(|(shard_id, blob_keys)| async move {
                 GetChangesetsForBlobKeys::query(
                     &self.read_connections[shard_id],
+                    None,
                     &repo_id,
                     &blob_keys[..],
                 )
@@ -166,6 +168,7 @@ impl SqlBonsaiBlobMapping {
                     let chunk: Vec<_> = chunk.iter().map(|(a, b, c)| (a, b, c)).collect();
                     let result = InsertBlobKeysForChangesets::query(
                         &self.write_connections[shard_id],
+                        None,
                         &chunk[..],
                     )
                     .await?;

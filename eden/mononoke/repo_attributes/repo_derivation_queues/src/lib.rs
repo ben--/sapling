@@ -63,6 +63,12 @@ pub trait DerivationQueue {
 
     async fn nack(&self, ctx: &CoreContext, item_id: DagItemId) -> Result<(), InternalError>;
 
+    async fn unsafe_evict(
+        &self,
+        ctx: &CoreContext,
+        item_id: DagItemId,
+    ) -> Result<(), InternalError>;
+
     async fn extend_deriving_ttl(
         &self,
         ctx: &CoreContext,
@@ -115,6 +121,7 @@ pub enum DequeueResponse {
     Items(BoxStream<'static, Result<DerivationDagItem, InternalError>>),
 }
 
-pub struct DerivationQueueSummary {
-    pub items: Vec<DerivationDagItem>,
+pub struct DerivationQueueSummary<'a> {
+    pub queue_size: usize,
+    pub items: BoxStream<'a, Result<DerivationDagItem, InternalError>>,
 }

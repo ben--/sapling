@@ -13,8 +13,8 @@ license = "MIT"
 name = "auth"
 
 [dependencies]
-anyhow = "1.0.95"
-chrono = { version = "=0.4.39", features = ["clock", "serde", "std"], default-features = false }
+anyhow = "1.0.98"
+chrono = { version = "0.4.41", features = ["clock", "serde", "std"], default-features = false }
 indexmap = { version = "2.9.0", features = ["arbitrary", "rayon", "serde"] }
 pem = "3.0.3"
 sapling-configmodel = { version = "0.1.0", path = "../config/model", features = ["convert-path"] }

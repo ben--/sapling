@@ -34,6 +34,7 @@ use metaconfig_types::HookBypass;
 use metaconfig_types::HookConfig;
 use metaconfig_types::HookManagerParams;
 use metaconfig_types::HookParams;
+use metaconfig_types::InferredCopyFromConfig;
 use metaconfig_types::InfinitepushNamespace;
 use metaconfig_types::InfinitepushParams;
 use metaconfig_types::LfsParams;
@@ -87,6 +88,7 @@ use repos::RawGitConfigs;
 use repos::RawGitDeltaManifestV2Config;
 use repos::RawHookConfig;
 use repos::RawHookManagerParams;
+use repos::RawInferredCopyFromConfig;
 use repos::RawInfinitepushParams;
 use repos::RawLfsParams;
 use repos::RawLoggingDestination;
@@ -526,6 +528,11 @@ impl Convert for RawDerivedDataTypesConfig {
             .map(|(k, v)| Ok((DerivableType::from_name(&k)?, v.try_into()?)))
             .collect::<Result<_>>()?;
 
+        let inferred_copy_from_config = self
+            .inferred_copy_from_config
+            .map(|raw| raw.convert())
+            .transpose()?;
+
         Ok(DerivedDataTypesConfig {
             types,
             ephemeral_bubbles_disabled_types,
@@ -537,6 +544,17 @@ impl Convert for RawDerivedDataTypesConfig {
             git_delta_manifest_version,
             git_delta_manifest_v2_config,
             derivation_batch_sizes,
+            inferred_copy_from_config,
+        })
+    }
+}
+
+impl Convert for RawInferredCopyFromConfig {
+    type Output = InferredCopyFromConfig;
+
+    fn convert(self) -> Result<Self::Output> {
+        Ok(InferredCopyFromConfig {
+            dir_level_for_basename_lookup: self.dir_level_for_basename_lookup as usize,
         })
     }
 }
@@ -642,7 +660,7 @@ impl Convert for RawWalkerJobParams {
             scheduled_max_concurrency: self.scheduled_max_concurrency,
             qps_limit: self.qps_limit,
             exclude_node_type: self.exclude_node_type,
-            allow_remaining_deferred: self.allow_remaining_deferred.map_or(false, |v| v),
+            allow_remaining_deferred: self.allow_remaining_deferred.is_some_and(|v| v),
             error_as_node_data_type: self.error_as_node_data_type,
         })
     }
@@ -699,6 +717,8 @@ impl Convert for RawCasSyncConfig {
         Ok(MononokeCasSyncConfig {
             main_bookmark_to_sync: self.main_bookmark_to_sync,
             sync_all_bookmarks: self.sync_all_bookmarks,
+            use_case_public: self.use_case_public,
+            use_case_draft: self.use_case_draft,
         })
     }
 }

@@ -16,14 +16,13 @@ use commit_cloud_helpers::make_workspace_acl_name;
 #[cfg(fbcode_build)]
 use commit_cloud_intern_utils::acl_check::infer_workspace_identity;
 use context::CoreContext;
-#[cfg(fbcode_build)]
-use futures_stats::futures03::TimedFutureExt;
 use metaconfig_types::RepoConfigRef;
 use mononoke_types::BonsaiChangeset;
 use mononoke_types::ChangesetId;
 use mononoke_types::path::MPath;
 use permission_checker::AclProvider;
 use repo_bookmark_attrs::RepoBookmarkAttrsRef;
+use repo_identity::RepoIdentityRef;
 use repo_permission_checker::RepoPermissionCheckerRef;
 
 use crate::error::AuthorizationError;
@@ -111,17 +110,30 @@ impl AuthorizationContext {
         }
     }
 
+    /// Create a permission denied error for a particular action for a named
+    /// repo.
+    fn permission_denied_name(
+        &self,
+        ctx: &CoreContext,
+        repo_name: &str,
+        denied_action: DeniedAction,
+    ) -> AuthorizationError {
+        AuthorizationError::from(Box::new(PermissionDenied {
+            denied_action,
+            denied_repo_name: repo_name.to_string(),
+            context: self.clone(),
+            identities: ctx.metadata().identities().clone(),
+        }))
+    }
+
     /// Create a permission denied error for a particular action.
     fn permission_denied(
         &self,
         ctx: &CoreContext,
+        repo: &impl RepoIdentityRef,
         denied_action: DeniedAction,
     ) -> AuthorizationError {
-        AuthorizationError::from(PermissionDenied {
-            denied_action,
-            context: self.clone(),
-            identities: ctx.metadata().identities().clone(),
-        })
+        self.permission_denied_name(ctx, repo.repo_identity().name(), denied_action)
     }
 
     /// Check if user has read access to the full repo.
@@ -151,11 +163,11 @@ impl AuthorizationContext {
     pub async fn require_full_repo_read(
         &self,
         ctx: &CoreContext,
-        repo: &impl RepoPermissionCheckerRef,
+        repo: &(impl RepoPermissionCheckerRef + RepoIdentityRef),
     ) -> Result<(), AuthorizationError> {
         self.check_full_repo_read(ctx, repo)
             .await
-            .permitted_or_else(|| self.permission_denied(ctx, DeniedAction::FullRepoRead))
+            .permitted_or_else(|| self.permission_denied(ctx, repo, DeniedAction::FullRepoRead))
     }
 
     /// Check if user has read access to the repo metadata.
@@ -192,11 +204,11 @@ impl AuthorizationContext {
     pub async fn require_repo_metadata_read(
         &self,
         ctx: &CoreContext,
-        repo: &impl RepoPermissionCheckerRef,
+        repo: &(impl RepoPermissionCheckerRef + RepoIdentityRef),
     ) -> Result<(), AuthorizationError> {
         self.check_repo_metadata_read(ctx, repo)
             .await
-            .permitted_or_else(|| self.permission_denied(ctx, DeniedAction::RepoMetadataRead))
+            .permitted_or_else(|| self.permission_denied(ctx, repo, DeniedAction::RepoMetadataRead))
     }
 
     pub async fn check_path_read(
@@ -233,14 +245,14 @@ impl AuthorizationContext {
     pub async fn require_path_read(
         &self,
         ctx: &CoreContext,
-        repo: &(impl RepoPermissionCheckerRef + AclRegionsRef),
+        repo: &(impl RepoPermissionCheckerRef + AclRegionsRef + RepoIdentityRef),
         csid: ChangesetId,
         path: &MPath,
     ) -> Result<(), AuthorizationError> {
         self.check_path_read(ctx, repo, csid, path)
             .await?
             .permitted_or_else(|| {
-                self.permission_denied(ctx, DeniedAction::PathRead(csid, path.clone()))
+                self.permission_denied(ctx, repo, DeniedAction::PathRead(csid, path.clone()))
             })
     }
 
@@ -277,11 +289,11 @@ impl AuthorizationContext {
     pub async fn require_full_repo_draft(
         &self,
         ctx: &CoreContext,
-        repo: &impl RepoPermissionCheckerRef,
+        repo: &(impl RepoPermissionCheckerRef + RepoIdentityRef),
     ) -> Result<(), AuthorizationError> {
         self.check_full_repo_draft(ctx, repo)
             .await
-            .permitted_or_else(|| self.permission_denied(ctx, DeniedAction::FullRepoDraft))
+            .permitted_or_else(|| self.permission_denied(ctx, repo, DeniedAction::FullRepoDraft))
     }
 
     /// Check whether the user has general write access to the repo.
@@ -350,12 +362,12 @@ impl AuthorizationContext {
     pub async fn require_repo_write(
         &self,
         ctx: &CoreContext,
-        repo: &(impl RepoPermissionCheckerRef + RepoConfigRef),
+        repo: &(impl RepoPermissionCheckerRef + RepoConfigRef + RepoIdentityRef),
         op: RepoWriteOperation,
     ) -> Result<(), AuthorizationError> {
         self.check_repo_write(ctx, repo, op)
             .await
-            .permitted_or_else(|| self.permission_denied(ctx, DeniedAction::RepoWrite(op)))
+            .permitted_or_else(|| self.permission_denied(ctx, repo, DeniedAction::RepoWrite(op)))
     }
 
     /// Check whether a user with write permissions may write to any path in the repo.
@@ -383,7 +395,7 @@ impl AuthorizationContext {
     pub async fn require_changeset_paths_write(
         &self,
         ctx: &CoreContext,
-        repo: &impl RepoConfigRef,
+        repo: &(impl RepoConfigRef + RepoIdentityRef),
         changeset: &BonsaiChangeset,
     ) -> Result<(), AuthorizationError> {
         match self {
@@ -392,10 +404,13 @@ impl AuthorizationContext {
                 .repo_config()
                 .source_control_service
                 .service_write_paths_permitted(service_name, changeset)
-                .map_err(|path| self.permission_denied(ctx, DeniedAction::PathWrite(path.clone()))),
+                .map_err(|path| {
+                    self.permission_denied(ctx, repo, DeniedAction::PathWrite(path.clone()))
+                }),
             AuthorizationContext::ReadOnlyIdentity | AuthorizationContext::DraftOnlyIdentity => {
                 Err(self.permission_denied(
                     ctx,
+                    repo,
                     DeniedAction::PathWrite(
                         changeset
                             .file_changes_map()
@@ -443,13 +458,17 @@ impl AuthorizationContext {
     pub async fn require_bookmark_modify(
         &self,
         ctx: &CoreContext,
-        repo: &(impl RepoConfigRef + RepoBookmarkAttrsRef),
+        repo: &(impl RepoConfigRef + RepoBookmarkAttrsRef + RepoIdentityRef),
         bookmark: &BookmarkKey,
     ) -> Result<(), AuthorizationError> {
         self.check_bookmark_modify(ctx, repo, bookmark)
             .await
             .permitted_or_else(|| {
-                self.permission_denied(ctx, DeniedAction::BookmarkModification(bookmark.clone()))
+                self.permission_denied(
+                    ctx,
+                    repo,
+                    DeniedAction::BookmarkModification(bookmark.clone()),
+                )
             })
     }
 
@@ -487,11 +506,13 @@ impl AuthorizationContext {
     pub async fn require_override_git_mapping(
         &self,
         ctx: &CoreContext,
-        repo: &impl RepoConfigRef,
+        repo: &(impl RepoConfigRef + RepoIdentityRef),
     ) -> Result<(), AuthorizationError> {
         self.check_override_git_mapping(ctx, repo)
             .await
-            .permitted_or_else(|| self.permission_denied(ctx, DeniedAction::OverrideGitMapping))
+            .permitted_or_else(|| {
+                self.permission_denied(ctx, repo, DeniedAction::OverrideGitMapping)
+            })
     }
 
     /// Check whether the caller is allowed to invoke git-import related
@@ -526,11 +547,13 @@ impl AuthorizationContext {
     pub async fn require_git_import_operations(
         &self,
         ctx: &CoreContext,
-        repo: &impl RepoConfigRef,
+        repo: &(impl RepoConfigRef + RepoIdentityRef),
     ) -> Result<(), AuthorizationError> {
         self.check_git_import_operations(ctx, repo)
             .await
-            .permitted_or_else(|| self.permission_denied(ctx, DeniedAction::GitImportOperation))
+            .permitted_or_else(|| {
+                self.permission_denied(ctx, repo, DeniedAction::GitImportOperation)
+            })
     }
 
     /// Check whether the caller is allowed to create a repo.
@@ -581,7 +604,9 @@ impl AuthorizationContext {
     ) -> Result<(), AuthorizationError> {
         self.check_repo_create(ctx, repo_name, acl_provider)
             .await
-            .permitted_or_else(|| self.permission_denied(ctx, DeniedAction::CreateRepo))
+            .permitted_or_else(|| {
+                self.permission_denied_name(ctx, repo_name, DeniedAction::CreateRepo)
+            })
     }
 
     /// Check whether the caller is allowed to operate on certain commit cloud workspace.
@@ -598,21 +623,12 @@ impl AuthorizationContext {
                 #[cfg(fbcode_build)]
                 {
                     if cc_ctx.owner.is_none() {
-                        let (stats, inferred_owner) = infer_workspace_identity(
+                        let inferred_owner = infer_workspace_identity(
                             ctx.fb,
                             &cc_ctx.workspace,
                             repo.commit_cloud().config.mocked_employees.clone(),
                         )
-                        .timed()
                         .await;
-
-                        ctx.scuba().clone().add_future_stats(&stats).log_with_msg(
-                            "commit cloud: inferred owner ",
-                            format!(
-                                "inferred owner: got outcome {:?} for workspace {}",
-                                inferred_owner, cc_ctx.workspace
-                            ),
-                        );
 
                         match inferred_owner {
                             Ok(owner) => {
@@ -634,10 +650,6 @@ impl AuthorizationContext {
                     match &cc_ctx.owner {
                         Some(owner) => {
                             if ctx.metadata().identities().contains(owner) {
-                                ctx.scuba().clone().log_with_msg(
-                                    "commit cloud ACL check success",
-                                    Some("inferred owner check".to_owned()),
-                                );
                                 return AuthorizationCheckOutcome::from_permitted(true);
                             }
                         }
@@ -674,10 +686,6 @@ impl AuthorizationContext {
                             .check_set(ctx.metadata().identities(), &[action])
                             .await
                         {
-                            ctx.scuba().clone().log_with_msg(
-                                "commit cloud ACL check success",
-                                Some("global allow list".to_owned()),
-                            );
                             return AuthorizationCheckOutcome::from_permitted(true);
                         }
                     }
@@ -704,7 +712,7 @@ impl AuthorizationContext {
     pub async fn require_commitcloud_operation(
         &self,
         ctx: &CoreContext,
-        repo: &impl CommitCloudRef,
+        repo: &(impl CommitCloudRef + RepoIdentityRef),
         cc_ctx: &mut CommitCloudContext,
         action: &str,
     ) -> Result<(), AuthorizationError> {
@@ -713,6 +721,7 @@ impl AuthorizationContext {
             .permitted_or_else(|| {
                 self.permission_denied(
                     ctx,
+                    repo,
                     DeniedAction::CommitCloudOperation(
                         action.to_string(),
                         cc_ctx.workspace.clone(),
@@ -746,11 +755,11 @@ impl AuthorizationContext {
     pub async fn require_mirror_upload_operations(
         &self,
         ctx: &CoreContext,
-        repo: &impl RepoPermissionCheckerRef,
+        repo: &(impl RepoPermissionCheckerRef + RepoIdentityRef),
     ) -> Result<(), AuthorizationError> {
         self.check_mirror_upload_operations(ctx, repo)
             .await
-            .permitted_or_else(|| self.permission_denied(ctx, DeniedAction::MirrorUpload))
+            .permitted_or_else(|| self.permission_denied(ctx, repo, DeniedAction::MirrorUpload))
     }
 }
 

@@ -5,10 +5,12 @@
  * LICENSE file in the root directory of this source tree.
  */
 
-import type {AbsolutePath, CwdInfo} from './types';
+import type {ReactNode} from 'react';
+import type {AbsolutePath, CwdInfo, CwdRelativePath, RepoRelativePath} from './types';
 
+import * as stylex from '@stylexjs/stylex';
 import {Badge} from 'isl-components/Badge';
-import {Button} from 'isl-components/Button';
+import {Button, buttonStyles} from 'isl-components/Button';
 import {ButtonDropdown} from 'isl-components/ButtonDropdown';
 import {Divider} from 'isl-components/Divider';
 import {Icon} from 'isl-components/Icon';
@@ -20,6 +22,7 @@ import {Tooltip} from 'isl-components/Tooltip';
 import {atom, useAtomValue} from 'jotai';
 import {Suspense} from 'react';
 import {basename} from 'shared/utils';
+import {colors} from '../../components/theme/tokens.stylex';
 import serverAPI from './ClientToServerAPI';
 import {Row} from './ComponentUtils';
 import {DropdownField, DropdownFields} from './DropdownFields';
@@ -29,7 +32,7 @@ import {T, t} from './i18n';
 import {writeAtom} from './jotaiUtils';
 import platform from './platform';
 import {serverCwd} from './repositoryData';
-import {repositoryInfo} from './serverAPIState';
+import {latestSubmodulesData, repositoryInfo} from './serverAPIState';
 import {registerCleanup, registerDisposable} from './utils';
 
 /**
@@ -41,6 +44,17 @@ export function relativePath(root: AbsolutePath, path: AbsolutePath) {
     return '';
   }
   return path.replace(root, '');
+}
+
+/**
+ * Simple version of path.join()
+ * Expect an absolute root path and a relative path whose separators are '/'
+ * e.g.
+ * joinPaths('/home', 'user') -> '/home/user'
+ * joinPaths('/home/', 'user/.config') -> '/home/user/.config'
+ */
+export function joinPaths(root: AbsolutePath, path: CwdRelativePath): AbsolutePath {
+  return root.endsWith('/') ? root + path : root + '/' + path;
 }
 
 /**
@@ -81,57 +95,113 @@ registerDisposable(
   import.meta.hot,
 );
 
+const styles = stylex.create({
+  container: {
+    display: 'flex',
+    gap: 0,
+  },
+  hideRightBorder: {
+    borderRight: 0,
+    marginRight: 0,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
+  hideLeftBorder: {
+    borderLeft: 0,
+    marginLeft: 0,
+    borderTopLeftRadius: 0,
+    borderBottomLeftRadius: 0,
+  },
+  submoduleSelect: {
+    appearance: 'none', // remove default styling of <select/>
+    width: 'auto',
+    maxWidth: '96px',
+    textOverflow: 'ellipsis',
+    boxShadow: 'none',
+    outline: 'none',
+  },
+  submoduleSeparator: {
+    // Override background to disable hover effect
+    background: {
+      default: colors.subtleHoverDarken,
+    },
+  },
+});
+
 export function CwdSelector() {
   const info = useAtomValue(repositoryInfo);
   const currentCwd = useAtomValue(serverCwd);
   const additionalToggles = useCommandEvent('ToggleCwdDropdown');
-  const allOptions = useCwdOptions();
-  const options = allOptions.filter(opt => opt.valid);
+  const allCwdOptions = useCwdOptions();
+  const cwdOptions = allCwdOptions.filter(opt => opt.valid);
+  const allSubmoduleOptions = useSubmoduleOptions();
+  const submoduleOptions = allSubmoduleOptions?.filter(opt => opt.valid);
+  const hasSubmodules = submoduleOptions != null && submoduleOptions.length > 0;
   if (info == null) {
     return null;
   }
-  const repoLabel = getRepoLabel(info.repoRoot, currentCwd);
+  const repoRoot = info.repoRoot;
+  const repoLabel = getRepoLabel(repoRoot, currentCwd);
+
   return (
-    <Tooltip
-      trigger="click"
-      component={dismiss => <CwdDetails dismiss={dismiss} />}
-      additionalToggles={additionalToggles.asEventTarget()}
-      group="topbar"
-      placement="bottom"
-      title={
-        <T replace={{$shortcut: <Kbd keycode={KeyCode.C} modifiers={[Modifier.ALT]} />}}>
-          Repository info & cwd ($shortcut)
-        </T>
-      }>
-      {options.length < 2 ? (
-        <Button icon data-testid="cwd-dropdown-button">
-          <Icon icon="folder" />
-          {repoLabel}
-        </Button>
-      ) : (
-        // use a ButtonDropdown as a shortcut to quickly change cwd
-        <ButtonDropdown
-          data-testid="cwd-dropdown-button"
-          kind="icon"
-          options={options}
-          selected={
-            options.find(opt => opt.id === currentCwd) ?? {
-              id: currentCwd,
-              label: repoLabel,
-              valid: true,
+    <div {...stylex.props(styles.container)}>
+      <Tooltip
+        trigger="click"
+        component={dismiss => <CwdDetails dismiss={dismiss} />}
+        additionalToggles={additionalToggles.asEventTarget()}
+        group="topbar"
+        placement="bottom"
+        title={
+          <T replace={{$shortcut: <Kbd keycode={KeyCode.C} modifiers={[Modifier.ALT]} />}}>
+            Repository info & cwd ($shortcut)
+          </T>
+        }>
+        {hasSubmodules || cwdOptions.length < 2 ? (
+          <Button
+            icon
+            data-testid="cwd-dropdown-button"
+            {...stylex.props(hasSubmodules && styles.hideRightBorder)}>
+            <Icon icon="folder" />
+            {repoLabel}
+          </Button>
+        ) : (
+          // use a ButtonDropdown as a shortcut to quickly change cwd
+          <ButtonDropdown
+            data-testid="cwd-dropdown-button"
+            kind="icon"
+            options={cwdOptions}
+            selected={
+              cwdOptions.find(opt => opt.id === currentCwd) ?? {
+                id: currentCwd,
+                label: repoLabel,
+                valid: true,
+              }
             }
-          }
-          icon={<Icon icon="folder" />}
-          onClick={
-            () => null // fall through to the Tooltip
-          }
+            icon={<Icon icon="folder" />}
+            onClick={
+              () => null // fall through to the Tooltip
+            }
+            onChangeSelected={value => {
+              if (value.id !== currentCwd) {
+                changeCwd(value.id);
+              }
+            }}></ButtonDropdown>
+        )}
+      </Tooltip>
+      {/* Submodule dropdown if available */}
+      {hasSubmodules && (
+        <SubmoduleSelector
+          options={submoduleOptions}
+          selected={submoduleOptions.find(opt => opt.id === relativePath(repoRoot, currentCwd))}
           onChangeSelected={value => {
-            if (value.id !== currentCwd) {
-              changeCwd(value.id);
+            if (value.id !== relativePath(repoRoot, currentCwd)) {
+              changeCwd(joinPaths(repoRoot, value.id));
             }
-          }}></ButtonDropdown>
+          }}
+          hideRightBorder={false}
+        />
       )}
-    </Tooltip>
+    </div>
   );
 }
 
@@ -181,6 +251,18 @@ function useCwdOptions() {
     id: cwdOptions[index].cwd,
     label: cwd.repoRelativeCwdLabel ?? cwd.cwd,
     valid: cwd.repoRoot != null,
+  }));
+}
+
+function useSubmoduleOptions():
+  | {id: RepoRelativePath; label: string; valid: boolean}[]
+  | undefined {
+  const fetchedSubmodules = useAtomValue(latestSubmodulesData);
+
+  return fetchedSubmodules.value?.map(m => ({
+    id: m.path,
+    label: m.name,
+    valid: m.active,
   }));
 }
 
@@ -234,4 +316,66 @@ export function CwdSelections({dismiss, divider}: {dismiss: () => unknown; divid
       {divider && <Divider />}
     </DropdownField>
   );
+}
+
+/**
+ * Dropdown selector for submodules in a breadcrumb style.
+ */
+function SubmoduleSelector<T extends {label: ReactNode; id: string}>({
+  options,
+  selected,
+  onChangeSelected,
+  hideRightBorder = true,
+}: {
+  options: ReadonlyArray<T>;
+  selected: T | undefined;
+  onChangeSelected: (newSelected: T) => unknown;
+  hideRightBorder?: boolean;
+}) {
+  const selectedValue = options.find(opt => opt.id === selected?.id)?.id;
+
+  return (
+    <Tooltip
+      trigger="hover"
+      placement="bottom"
+      component={() => <SubmoduleHint path={selectedValue} />}>
+      <Icon
+        icon="chevron-right"
+        {...stylex.props(
+          buttonStyles.icon,
+          styles.submoduleSeparator,
+          styles.hideLeftBorder,
+          styles.hideRightBorder,
+        )}
+      />
+      <select
+        {...stylex.props(
+          buttonStyles.button,
+          buttonStyles.icon,
+          styles.submoduleSelect,
+          styles.hideLeftBorder,
+          hideRightBorder && styles.hideRightBorder,
+        )}
+        value={selectedValue ?? ''}
+        onChange={event => {
+          const matching = options.find(opt => opt.id === (event.target.value as T['id']));
+          if (matching != null) {
+            onChangeSelected(matching);
+          }
+        }}>
+        <option value="" disabled hidden>
+          submodules ...
+        </option>
+        {options.map(option => (
+          <option key={option.id} value={option.id}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </Tooltip>
+  );
+}
+
+function SubmoduleHint({path}: {path: string | undefined}) {
+  return <T>{path ? `Submodule at: ${path}` : 'Select a submodule'}</T>;
 }

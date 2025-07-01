@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use anyhow::Error;
@@ -71,6 +72,8 @@ use mononoke_types::content_manifest::compat::ContentManifestFile;
 use mononoke_types::content_manifest::compat::ContentManifestId;
 use mononoke_types::path::MPath;
 use repo_authorization::AuthorizationContext;
+use retry::RetryLogic;
+use retry::retry;
 use sorted_vector_map::SortedVectorMap;
 
 use crate::Repo;
@@ -241,9 +244,7 @@ pub trait MegarepoOp<R> {
             Result::<_, Error>::Ok(hg_cs.manifestid())
         }));
 
-        let (hg_cs_merge, parent_hg_css) = try_join(hg_cs_merge, parent_hg_css)
-            .await
-            .map_err(Error::from)?;
+        let (hg_cs_merge, parent_hg_css) = try_join(hg_cs_merge, parent_hg_css).await?;
 
         let file_changes = bonsai_diff(
             ctx.clone(),
@@ -599,12 +600,7 @@ pub trait MegarepoOp<R> {
             .iter()
             .map(|(_, css)| css.moved.get_changeset_id())
             .collect::<Vec<_>>();
-        let (stats, ()) = stream::iter(cs_ids)
-            .map(|cs_id| Ok(derive_all_types(ctx, repo, cs_id)))
-            .try_buffered(10)
-            .try_for_each(|_| async { Ok(()) })
-            .try_timed()
-            .await?;
+        let (stats, _) = derive_all_types(ctx, repo, &cs_ids).try_timed().await?;
         scuba.add_future_stats(&stats);
         scuba.log_with_msg("Derived move commits", None);
 
@@ -845,16 +841,9 @@ pub trait MegarepoOp<R> {
         let mut scuba = ctx.scuba().clone();
         scuba.add("merge_commits_count", merge_cs_ids.len());
         scuba.log_with_msg("Started deriving merge commits", None);
-        let (stats, ()) = async {
-            for cs_ids in merge_cs_ids.chunks(10) {
-                if let Some(cs_id) = cs_ids.last() {
-                    derive_all_types(ctx, repo, *cs_id).await?;
-                }
-            }
-            anyhow::Ok(())
-        }
-        .try_timed()
-        .await?;
+        let (stats, _) = derive_all_types(ctx, repo, &merge_cs_ids)
+            .try_timed()
+            .await?;
         scuba.add_future_stats(&stats);
         scuba.log_with_msg("Derived merge commits", None);
 
@@ -1286,7 +1275,7 @@ pub async fn save_sync_target_config_in_changeset(
 pub(crate) async fn derive_all_types(
     ctx: &CoreContext,
     repo: &impl Repo,
-    cs_id: ChangesetId,
+    csids: &[ChangesetId],
 ) -> Result<(), Error> {
     let derived_data_types = repo
         .repo_derived_data()
@@ -1299,10 +1288,33 @@ pub(crate) async fn derive_all_types(
             *t != DerivableType::FileNodes
         })
         .collect::<Vec<_>>();
-    repo.repo_derived_data()
-        .manager()
-        .derive_bulk(ctx, &[cs_id], None, &derived_data_types, None)
-        .await?;
+    retry(
+        Some(ctx.logger()),
+        async |num_retry| {
+            if num_retry >= 1 {
+                let mut scuba = ctx.scuba().clone();
+                scuba.log_with_msg(
+                    "Derived data failed, retrying. Num retries",
+                    Some(format!("{num_retry}")),
+                );
+            }
+            repo.repo_derived_data()
+                .manager()
+                .derive_bulk(ctx, csids, None, &derived_data_types, None)
+                .await
+        },
+        |e| {
+            let description = format!("{e:?}").to_ascii_lowercase();
+            description.contains("blobstore") || description.contains("timeout")
+        },
+        RetryLogic::ExponentialWithJitter {
+            base: Duration::from_secs(1),
+            factor: 1.2,
+            jitter: Duration::from_secs(2),
+        },
+        5,
+    )
+    .await?;
     Ok(())
 }
 

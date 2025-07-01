@@ -75,6 +75,7 @@ use smallvec::SmallVec;
 use sorted_vector_map::SortedVectorMap;
 use unodes::RootUnodeManifestId;
 use vec1::Vec1;
+use xdiff::CopyInfo;
 
 use crate::MononokeRepo;
 use crate::changeset_path::ChangesetPathContentContext;
@@ -794,12 +795,14 @@ impl<R: MononokeRepo> ChangesetContext<R> {
         &self,
         other: &ChangesetContext<R>,
         include_copies_renames: bool,
+        include_subtree_copies: bool,
         path_restrictions: Option<Vec<MPath>>,
         diff_items: BTreeSet<ChangesetDiffItem>,
     ) -> Result<Vec<ChangesetPathDiffContext<R>>, MononokeError> {
         self.diff(
             other,
             include_copies_renames,
+            include_subtree_copies,
             path_restrictions,
             diff_items,
             ChangesetFileOrdering::Unordered,
@@ -809,17 +812,41 @@ impl<R: MononokeRepo> ChangesetContext<R> {
         .await
     }
 
+    /// If the given path is part of a subtree copy, get the subtree copy source, as well as the replacement path
+    /// from the subtree copy destination.
+    ///
+    /// If the path was not part of a subtree copy, return the changeset and path as-is.
+    fn get_subtree_copy_source(
+        subtree_copy_sources: &manifest::PathTree<Option<(ChangesetContext<R>, MPath)>>,
+        changeset: &ChangesetContext<R>,
+        path: &MPath,
+    ) -> Result<(ChangesetContext<R>, MPath, Option<MPath>), MononokeError> {
+        if let Some((dest_path, Some((source_cs, source_path)))) =
+            subtree_copy_sources.get_nearest_parent(path, Option::is_some)
+        {
+            Ok((
+                source_cs.clone(),
+                path.reparent(&dest_path, source_path)?,
+                Some(path.clone()),
+            ))
+        } else {
+            Ok((changeset.clone(), path.clone(), None))
+        }
+    }
+
     /// Returns differences between this changeset and some other changeset.
     ///
     /// `self` is considered the "new" changeset (so files missing there are "Removed")
     /// `other` is considered the "old" changeset (so files missing there are "Added")
-    /// `include_copies_renames` is only available for files when diffing commits with its parent
+    /// `include_copies_renames` and `include_subtree_copies` are only available
+    /// when diffing commits with its parent
     /// `path_restrictions` if present will narrow down the diff to given paths
     /// `diff_items` what to include in the output (files, dirs or both)
     pub async fn diff(
         &self,
         other: &ChangesetContext<R>,
         include_copies_renames: bool,
+        include_subtree_copies: bool,
         path_restrictions: Option<Vec<MPath>>,
         diff_items: BTreeSet<ChangesetDiffItem>,
         ordering: ChangesetFileOrdering,
@@ -827,7 +854,7 @@ impl<R: MononokeRepo> ChangesetContext<R> {
     ) -> Result<Vec<ChangesetPathDiffContext<R>>, MononokeError> {
         // Helper to that checks if a path is within the givien path restrictions
         fn within_restrictions(path: &MPath, path_restrictions: &Option<Vec<MPath>>) -> bool {
-            path_restrictions.as_ref().map_or(true, |i| {
+            path_restrictions.as_ref().is_none_or(|i| {
                 i.iter()
                     .any(|path_restriction| path.is_related_to(path_restriction))
             })
@@ -838,11 +865,12 @@ impl<R: MononokeRepo> ChangesetContext<R> {
         let mut copy_path_map = HashMap::new();
         // map from to_path to from_path
         let mut inv_copy_path_map = HashMap::new();
-        let file_changes = self.file_changes().await?;
-        // For now we only consider copies when comparing with parent, or using mutable history
-        if include_copies_renames
-            && (self.mutable_history.is_some() || self.parents().await?.contains(&other.id))
-        {
+        let mut manifest_replacements = HashMap::new();
+        let mut subtree_copy_sources = manifest::PathTree::default();
+        // We can only consider copies or subtree copies when comparing with a parent
+        let comparing_against_parent = self.parents().await?.contains(&other.id);
+        if comparing_against_parent && include_copies_renames {
+            let file_changes = self.file_changes().await?;
             let mut to_paths = HashSet::new();
             if let Some(overrides) = &self.mutable_history {
                 for (dst_path, mutable_history) in overrides {
@@ -944,6 +972,39 @@ impl<R: MononokeRepo> ChangesetContext<R> {
                 }
             }
         }
+        if comparing_against_parent && include_subtree_copies {
+            let subtree_changes = self.subtree_changes().await?;
+            for (path, change) in subtree_changes {
+                if let Some((from_cs_id, from_path)) = change.copy_or_deep_copy_source() {
+                    let from_cs =
+                        self.repo_ctx()
+                            .changeset(from_cs_id)
+                            .await?
+                            .ok_or_else(|| {
+                                MononokeError::from(anyhow!(
+                                    "Subtree copy source {from_cs_id} not found"
+                                ))
+                            })?;
+                    let entry = from_cs
+                        .root_fsnode_id()
+                        .await?
+                        .into_fsnode_id()
+                        .find_entry(
+                            self.ctx().clone(),
+                            self.repo_ctx().repo_blobstore(),
+                            from_path.clone(),
+                        )
+                        .await?
+                        .ok_or_else(|| {
+                            MononokeError::from(anyhow!(
+                                "Invalid subtree copy source: {from_cs_id} does not contain {from_path}"
+                            ))
+                        })?;
+                    subtree_copy_sources.insert(path.clone(), Some((from_cs, from_path.clone())));
+                    manifest_replacements.insert(path, entry);
+                }
+            }
+        }
 
         // set of paths from other that were copied in (not moved)
         // We check if `self` contains paths that were source for copy or move in `other`
@@ -989,10 +1050,35 @@ impl<R: MononokeRepo> ChangesetContext<R> {
                         self.repo_ctx().repo().repo_blobstore().clone(),
                         Some,
                         recurse_pruner,
+                        manifest_replacements,
                     )
                     .left_stream()
             }
             ChangesetFileOrdering::Ordered { after } => {
+                // We must find the weights of manifest replacements.
+                let manifest_replacements = stream::iter(manifest_replacements)
+                    .map(|(path, entry)| {
+                        Ok(async move {
+                            match entry {
+                                ManifestEntry::Tree(fsnode_id) => {
+                                    let fsnode = fsnode_id
+                                        .load(self.ctx(), self.repo_ctx().repo().repo_blobstore())
+                                        .await?;
+                                    let summary = fsnode.summary();
+                                    let weight =
+                                        summary.descendant_files_count + summary.child_dirs_count;
+                                    anyhow::Ok((
+                                        path,
+                                        ManifestEntry::Tree((weight as usize, fsnode_id)),
+                                    ))
+                                }
+                                ManifestEntry::Leaf(leaf) => Ok((path, ManifestEntry::Leaf(leaf))),
+                            }
+                        })
+                    })
+                    .try_buffered(10)
+                    .try_collect()
+                    .await?;
                 // We start from "other" as manifest.diff() is backwards
                 other_manifest_root
                     .fsnode_id()
@@ -1004,6 +1090,7 @@ impl<R: MononokeRepo> ChangesetContext<R> {
                         after,
                         Some,
                         recurse_pruner,
+                        manifest_replacements,
                     )
                     .right_stream()
             }
@@ -1020,7 +1107,7 @@ impl<R: MononokeRepo> ChangesetContext<R> {
                                 inv_copy_path_map.get(&path)
                             {
                                 // There's copy information that we can use.
-                                if copied_paths.contains(from_path)
+                                let copy_info = if copied_paths.contains(from_path)
                                     || copy_path_map
                                         .get(*from_path)
                                         .and_then(|to_paths| to_paths.first())
@@ -1029,49 +1116,50 @@ impl<R: MononokeRepo> ChangesetContext<R> {
                                     // If the source still exists in the current
                                     // commit, or this isn't the first place it
                                     // was copied to, it was a copy.
-                                    let from = ChangesetPathContentContext::new_with_fsnode_entry(
-                                        other.clone(),
-                                        (**from_path).clone(),
-                                        *from_entry,
-                                    )
-                                    .await?;
-                                    Some(ChangesetPathDiffContext::Copied(
-                                        ChangesetPathContentContext::new_with_fsnode_entry(
-                                            self.clone(),
-                                            path,
-                                            entry,
-                                        )
-                                        .await?,
-                                        from,
-                                    ))
+                                    CopyInfo::Copy
                                 } else {
                                     // If it doesn't, and this is the first place
                                     // it was copied to, it was a move.
-                                    let from = ChangesetPathContentContext::new_with_fsnode_entry(
-                                        other.clone(),
-                                        (**from_path).clone(),
-                                        *from_entry,
-                                    )
-                                    .await?;
-                                    Some(ChangesetPathDiffContext::Moved(
+                                    CopyInfo::Move
+                                };
+
+                                let from = ChangesetPathContentContext::new_with_fsnode_entry(
+                                    other.clone(),
+                                    (**from_path).clone(),
+                                    *from_entry,
+                                )
+                                .await?;
+                                Some(ChangesetPathDiffContext::new_file(
+                                    self.clone(),
+                                    path.clone(),
+                                    Some(
                                         ChangesetPathContentContext::new_with_fsnode_entry(
                                             self.clone(),
                                             path,
                                             entry,
                                         )
                                         .await?,
-                                        from,
-                                    ))
-                                }
+                                    ),
+                                    Some(from),
+                                    copy_info,
+                                    None,
+                                )?)
                             } else {
-                                Some(ChangesetPathDiffContext::Added(
-                                    ChangesetPathContentContext::new_with_fsnode_entry(
-                                        self.clone(),
-                                        path,
-                                        entry,
-                                    )
-                                    .await?,
-                                ))
+                                Some(ChangesetPathDiffContext::new_file(
+                                    self.clone(),
+                                    path.clone(),
+                                    Some(
+                                        ChangesetPathContentContext::new_with_fsnode_entry(
+                                            self.clone(),
+                                            path,
+                                            entry,
+                                        )
+                                        .await?,
+                                    ),
+                                    None,
+                                    CopyInfo::None,
+                                    None,
+                                )?)
                             }
                         }
                         ManifestDiff::Removed(path, entry @ ManifestEntry::Leaf(_)) => {
@@ -1083,14 +1171,27 @@ impl<R: MononokeRepo> ChangesetContext<R> {
                             {
                                 None
                             } else {
-                                Some(ChangesetPathDiffContext::Removed(
-                                    ChangesetPathContentContext::new_with_fsnode_entry(
-                                        other.clone(),
-                                        path,
-                                        entry,
-                                    )
-                                    .await?,
-                                ))
+                                let (source, source_path, replacement_path) =
+                                    Self::get_subtree_copy_source(
+                                        &subtree_copy_sources,
+                                        other,
+                                        &path,
+                                    )?;
+                                Some(ChangesetPathDiffContext::new_file(
+                                    self.clone(),
+                                    path.clone(),
+                                    None,
+                                    Some(
+                                        ChangesetPathContentContext::new_with_fsnode_entry(
+                                            source,
+                                            source_path,
+                                            entry,
+                                        )
+                                        .await?,
+                                    ),
+                                    CopyInfo::None,
+                                    replacement_path,
+                                )?)
                             }
                         }
                         ManifestDiff::Changed(
@@ -1101,48 +1202,80 @@ impl<R: MononokeRepo> ChangesetContext<R> {
                             if !diff_files || !within_restrictions(&path, &path_restrictions) {
                                 None
                             } else {
-                                Some(ChangesetPathDiffContext::Changed(
-                                    ChangesetPathContentContext::new_with_fsnode_entry(
-                                        self.clone(),
-                                        path.clone(),
-                                        to_entry,
-                                    )
-                                    .await?,
-                                    ChangesetPathContentContext::new_with_fsnode_entry(
-                                        other.clone(),
-                                        path,
-                                        from_entry,
-                                    )
-                                    .await?,
-                                ))
+                                let (source, source_path, replacement_path) =
+                                    Self::get_subtree_copy_source(
+                                        &subtree_copy_sources,
+                                        other,
+                                        &path,
+                                    )?;
+                                Some(ChangesetPathDiffContext::new_file(
+                                    self.clone(),
+                                    path.clone(),
+                                    Some(
+                                        ChangesetPathContentContext::new_with_fsnode_entry(
+                                            self.clone(),
+                                            path.clone(),
+                                            to_entry,
+                                        )
+                                        .await?,
+                                    ),
+                                    Some(
+                                        ChangesetPathContentContext::new_with_fsnode_entry(
+                                            source,
+                                            source_path,
+                                            from_entry,
+                                        )
+                                        .await?,
+                                    ),
+                                    CopyInfo::None,
+                                    replacement_path,
+                                )?)
                             }
                         }
                         ManifestDiff::Added(path, entry @ ManifestEntry::Tree(_)) => {
                             if !diff_trees || !within_restrictions(&path, &path_restrictions) {
                                 None
                             } else {
-                                Some(ChangesetPathDiffContext::Added(
-                                    ChangesetPathContentContext::new_with_fsnode_entry(
-                                        self.clone(),
-                                        path,
-                                        entry,
-                                    )
-                                    .await?,
-                                ))
+                                Some(ChangesetPathDiffContext::new_tree(
+                                    self.clone(),
+                                    path.clone(),
+                                    Some(
+                                        ChangesetPathContentContext::new_with_fsnode_entry(
+                                            self.clone(),
+                                            path,
+                                            entry,
+                                        )
+                                        .await?,
+                                    ),
+                                    None,
+                                    None,
+                                )?)
                             }
                         }
                         ManifestDiff::Removed(path, entry @ ManifestEntry::Tree(_)) => {
                             if !diff_trees || !within_restrictions(&path, &path_restrictions) {
                                 None
                             } else {
-                                Some(ChangesetPathDiffContext::Removed(
-                                    ChangesetPathContentContext::new_with_fsnode_entry(
-                                        self.clone(),
-                                        path,
-                                        entry,
-                                    )
-                                    .await?,
-                                ))
+                                let (source, source_path, replacement_path) =
+                                    Self::get_subtree_copy_source(
+                                        &subtree_copy_sources,
+                                        other,
+                                        &path,
+                                    )?;
+                                Some(ChangesetPathDiffContext::new_tree(
+                                    self.clone(),
+                                    path.clone(),
+                                    None,
+                                    Some(
+                                        ChangesetPathContentContext::new_with_fsnode_entry(
+                                            source,
+                                            source_path,
+                                            entry,
+                                        )
+                                        .await?,
+                                    ),
+                                    replacement_path,
+                                )?)
                             }
                         }
                         ManifestDiff::Changed(
@@ -1153,20 +1286,33 @@ impl<R: MononokeRepo> ChangesetContext<R> {
                             if !diff_trees || !within_restrictions(&path, &path_restrictions) {
                                 None
                             } else {
-                                Some(ChangesetPathDiffContext::Changed(
-                                    ChangesetPathContentContext::new_with_fsnode_entry(
-                                        self.clone(),
-                                        path.clone(),
-                                        to_entry,
-                                    )
-                                    .await?,
-                                    ChangesetPathContentContext::new_with_fsnode_entry(
-                                        other.clone(),
-                                        path,
-                                        from_entry,
-                                    )
-                                    .await?,
-                                ))
+                                let (source, source_path, replacement_path) =
+                                    Self::get_subtree_copy_source(
+                                        &subtree_copy_sources,
+                                        other,
+                                        &path,
+                                    )?;
+                                Some(ChangesetPathDiffContext::new_tree(
+                                    self.clone(),
+                                    path.clone(),
+                                    Some(
+                                        ChangesetPathContentContext::new_with_fsnode_entry(
+                                            self.clone(),
+                                            path.clone(),
+                                            to_entry,
+                                        )
+                                        .await?,
+                                    ),
+                                    Some(
+                                        ChangesetPathContentContext::new_with_fsnode_entry(
+                                            source,
+                                            source_path,
+                                            from_entry,
+                                        )
+                                        .await?,
+                                    ),
+                                    replacement_path,
+                                )?)
                             }
                         }
                         // We've already covered all practical possibilities as there are no "changed"
@@ -1384,18 +1530,33 @@ impl<R: MononokeRepo> ChangesetContext<R> {
             })
             .try_filter_map(|(path, entry)| async move {
                 match (path.into_optional_non_root_path(), entry) {
-                    (Some(mpath), ManifestEntry::Leaf(_)) if diff_files => Ok(Some(mpath)),
-                    (Some(mpath), ManifestEntry::Tree(_)) if diff_trees => Ok(Some(mpath)),
+                    (Some(mpath), ManifestEntry::Leaf(_)) if diff_files => Ok(Some((MPath::from(mpath), false))),
+                    (Some(mpath), ManifestEntry::Tree(_)) if diff_trees => Ok(Some((MPath::from(mpath), true))),
                     _ => Ok(None),
                 }
             })
-            .map_ok(MPath::from)
             .map_err(MononokeError::from)
             .take(limit.unwrap_or(usize::MAX))
-            .and_then(|mp| async move {
-                Ok(ChangesetPathDiffContext::Added(
-                    ChangesetPathContentContext::new(self.clone(), mp).await?,
-                ))
+            .and_then(|(path, is_tree)| async move {
+                let base = ChangesetPathContentContext::new(self.clone(), path.clone()).await?;
+                if is_tree {
+                    Ok(ChangesetPathDiffContext::new_tree(
+                        self.clone(),
+                        path,
+                        Some(base),
+                        None,
+                        None,
+                    )?)
+                } else {
+                    Ok(ChangesetPathDiffContext::new_file(
+                        self.clone(),
+                        path,
+                        Some(base),
+                        None,
+                        CopyInfo::None,
+                        None,
+                    )?)
+                }
             })
             .try_collect::<Vec<_>>()
             .watched(self.ctx().logger())

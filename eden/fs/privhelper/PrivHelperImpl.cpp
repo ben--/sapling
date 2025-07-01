@@ -12,13 +12,10 @@
 #include <folly/File.h>
 #include <folly/FileUtil.h>
 #include <folly/SocketAddress.h>
-#include <folly/String.h>
 #include <folly/Synchronized.h>
 #include <folly/futures/Future.h>
-#include <folly/init/Init.h>
 #include <folly/io/Cursor.h>
 #include <folly/io/async/EventBase.h>
-#include <folly/logging/Init.h>
 #include <folly/logging/xlog.h>
 #include <folly/portability/SysTypes.h>
 #include <folly/portability/Unistd.h>
@@ -31,7 +28,6 @@
 #include "eden/fs/privhelper/PrivHelper.h"
 #include "eden/fs/privhelper/PrivHelperConn.h"
 #include "eden/fs/privhelper/PrivHelperFlags.h"
-#include "eden/fs/privhelper/PrivHelperServer.h"
 #include "eden/fs/utils/NotImplemented.h"
 
 using folly::checkUnixError;
@@ -109,10 +105,11 @@ class PrivHelperClientImpl : public PrivHelper,
       folly::StringPiece mountPath,
       bool readOnly,
       StringPiece vfsType) override;
-  Future<Unit> nfsMount(folly::StringPiece mountPath, NFSMountOptions options)
+  Future<Unit> fuseUnmount(StringPiece mountPath, const UnmountOptions& options)
       override;
-  Future<Unit> fuseUnmount(StringPiece mountPath, UnmountOptions options)
-      override;
+  Future<Unit> nfsMount(
+      folly::StringPiece mountPath,
+      const NFSMountOptions& options) override;
   Future<Unit> nfsUnmount(StringPiece mountPath) override;
   Future<Unit> bindMount(StringPiece clientPath, StringPiece mountPath)
       override;
@@ -132,6 +129,8 @@ class PrivHelperClientImpl : public PrivHelper,
       const std::string& specifiedOutputPath,
       const bool shouldUpload) override;
   Future<StopFileAccessMonitorResponse> stopFam() override;
+  Future<folly::Unit> setMemoryPriorityForProcess(pid_t pid, int priority)
+      override;
   int stop() override;
   int getRawClientFd() const override {
     auto state = state_.rlock();
@@ -403,86 +402,34 @@ Future<File> PrivHelperClientImpl::fuseMount(
       });
 }
 
-namespace {
-void removeNewMountOptions(NFSMountOptions& options) {
-  options.readIOSize = std::nullopt;
-  options.writeIOSize = std::nullopt;
-  options.directoryReadSize = std::nullopt;
-  options.readAheadSize = std::nullopt;
-  options.retransmitTimeoutTenthSeconds = std::nullopt;
-  options.retransmitAttempts = std::nullopt;
-  options.deadTimeoutSeconds = std::nullopt;
-  options.dumbtimer = std::nullopt;
-}
-} // namespace
-
 Future<Unit> PrivHelperClientImpl::nfsMount(
     folly::StringPiece mountPath,
-    NFSMountOptions options) {
+    const NFSMountOptions& options) {
   auto xid = getNextXid();
   auto request =
       PrivHelperConn::serializeMountNfsRequest(xid, mountPath, options);
 
   return sendAndRecv(xid, std::move(request))
-      .thenValue(
-          [this, mountPath = mountPath.str(), options](
-              UnixSocket::Message&& response) mutable -> Future<Unit> {
-            try {
-              PrivHelperConn::parseEmptyResponse(
-                  PrivHelperConn::REQ_MOUNT_NFS, response);
-              return folly::unit;
-            } catch (const PrivHelperError&) {
-              // If the mount failed, it likely means we are communicating with
-              // a PrivHelper server that doesn't understand the new
-              // NFSMountOption fields.  Retry the mount without the new fields.
-              // TODO(T213499633): Clean up compatibility logic in 2-3 months.
-              removeNewMountOptions(options);
-              auto retry_xid = getNextXid();
-              auto retry_request = PrivHelperConn::serializeMountNfsRequest(
-                  retry_xid, mountPath, options);
-              return sendAndRecv(retry_xid, std::move(retry_request))
-                  .thenValue([](UnixSocket::Message&& retry_response) {
-                    PrivHelperConn::parseEmptyResponse(
-                        PrivHelperConn::REQ_MOUNT_NFS, retry_response);
-                    return folly::unit;
-                  });
-            }
-          });
+      .thenValue([](UnixSocket::Message&& response) mutable -> Future<Unit> {
+        PrivHelperConn::parseEmptyResponse(
+            PrivHelperConn::REQ_MOUNT_NFS, response);
+        return folly::unit;
+      });
 }
 
 Future<Unit> PrivHelperClientImpl::fuseUnmount(
     StringPiece mountPath,
-    UnmountOptions options) {
+    const UnmountOptions& options) {
   auto xid = getNextXid();
   auto request =
       PrivHelperConn::serializeUnmountRequest(xid, mountPath, options);
 
   return sendAndRecv(xid, std::move(request))
-      .thenValue(
-          [this, mountPath = mountPath.str(), options](
-              UnixSocket::Message&& response) mutable -> Future<Unit> {
-            try {
-              PrivHelperConn::parseEmptyResponse(
-                  PrivHelperConn::REQ_UNMOUNT_FUSE, response);
-              return folly::unit;
-            } catch (const PrivHelperError&) {
-              // If the unmount failed, it likely means we are communicating
-              // with a PrivHelper server that doesn't understand the new
-              // UnmountOptions fields.  Retry the unmount without serializing
-              // the new fields.
-              // TODO[T214491519] remove this after 1-2 months.
-              options.skip_serialize = true;
-              auto retryXid = getNextXid();
-              auto retryRequest = PrivHelperConn::serializeUnmountRequest(
-                  retryXid, mountPath, options);
-              return sendAndRecv(retryXid, std::move(retryRequest))
-                  .thenValue([](UnixSocket::Message&& retryResponse) {
-                    PrivHelperConn::parseEmptyResponse(
-                        PrivHelperConn::REQ_UNMOUNT_FUSE, retryResponse);
-                    return folly::unit;
-                  });
-            }
-          });
+      .thenValue([](UnixSocket::Message&& response) mutable -> Future<Unit> {
+        PrivHelperConn::parseEmptyResponse(
+            PrivHelperConn::REQ_UNMOUNT_FUSE, response);
+        return folly::unit;
+      });
 }
 
 Future<Unit> PrivHelperClientImpl::nfsUnmount(StringPiece mountPath) {
@@ -622,6 +569,34 @@ Future<StopFileAccessMonitorResponse> PrivHelperClientImpl::stopFam() {
             stopResponse.specifiedOutputPath,
             stopResponse.shouldUpload);
         return stopResponse;
+      });
+}
+
+Future<Unit> PrivHelperClientImpl::setMemoryPriorityForProcess(
+    pid_t pid,
+    int priority) {
+  auto xid = getNextXid();
+  auto request = PrivHelperConn::serializeSetMemoryPriorityForProcessRequest(
+      xid, pid, priority);
+
+  return sendAndRecv(xid, std::move(request))
+      .thenValue([pid, priority](UnixSocket::Message&& response) {
+        try {
+          PrivHelperConn::parseEmptyResponse(
+              PrivHelperConn::REQ_SET_MEMORY_PRIORITY_FOR_PROCESS, response);
+        } catch (const PrivHelperError& e) {
+          // If the unmount failed, it likely means we are communicating
+          // with a PrivHelper server that doesn't understand how to set memory
+          // priority. Ignore the error for now.
+          // TODO[T214491519] remove this after 1-2 months.
+          XLOGF(
+              ERR,
+              "Failed to set memory priority to {} for process {}: {}",
+              priority,
+              pid,
+              e.what());
+        }
+        return folly::unit;
       });
 }
 
@@ -848,7 +823,8 @@ class StubPrivHelper final : public PrivHelper {
 
   folly::Future<folly::Unit> nfsMount(
       folly::StringPiece mountPath,
-      NFSMountOptions options) override {
+      const NFSMountOptions& options) override {
+    (void)mountPath;
     (void)options;
     // TODO: We do support NFS on Windows. Should the mount flow be
     // implemented here?
@@ -857,8 +833,9 @@ class StubPrivHelper final : public PrivHelper {
 
   folly::Future<folly::Unit> fuseUnmount(
       folly::StringPiece mountPath,
-      UnmountOptions /* options */) override {
+      const UnmountOptions& options) override {
     (void)mountPath;
+    (void)options;
     NOT_IMPLEMENTED();
   }
 
@@ -922,10 +899,22 @@ class StubPrivHelper final : public PrivHelper {
       const std::string& tmpOutputPath,
       const std::string& specifiedOutputPath,
       const bool shouldUpload) override {
+    (void)paths;
+    (void)tmpOutputPath;
+    (void)specifiedOutputPath;
+    (void)shouldUpload;
     NOT_IMPLEMENTED();
   }
 
   folly::Future<StopFileAccessMonitorResponse> stopFam() override {
+    NOT_IMPLEMENTED();
+  }
+
+  folly::Future<folly::Unit> setMemoryPriorityForProcess(
+      pid_t pid,
+      int priority) {
+    (void)pid;
+    (void)priority;
     NOT_IMPLEMENTED();
   }
 

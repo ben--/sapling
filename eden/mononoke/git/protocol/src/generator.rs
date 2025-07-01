@@ -25,6 +25,7 @@ use futures_stats::TimedTryFutureExt;
 use git_types::GitDeltaManifestEntryOps;
 use git_types::GitIdentifier;
 use git_types::GitTreeId;
+use git_types::PackfileItem;
 use git_types::fetch_git_delta_manifest;
 use git_types::fetch_non_blob_git_object;
 use git_types::tree::GitEntry;
@@ -33,7 +34,6 @@ use manifest::ManifestOps;
 use mononoke_types::ChangesetId;
 use mononoke_types::hash::GitSha1;
 use mononoke_types::path::MPath;
-use packfile::types::PackfileItem;
 use rustc_hash::FxHashSet;
 use scuba_ext::FutureStatsScubaExt;
 use scuba_ext::MononokeScubaSampleBuilder;
@@ -97,12 +97,11 @@ async fn boundary_trees_and_blobs(
         .map_ok(|(changeset_id, git_commit_id)| {
             cloned!(ctx, blobstore, filter);
             async move {
-                let commit_object = fetch_non_blob_git_object(&ctx, &blobstore, &git_commit_id)
+                let root_tree = fetch_non_blob_git_object(&ctx, &blobstore, &git_commit_id)
                     .await
                     .context("Error in fetching boundary commit")?
-                    .try_into_commit()
-                    .map_err(|_| anyhow::anyhow!("Git object {:?} is not a commit", git_commit_id))?;
-                let root_tree = GitTreeId(commit_object.tree);
+                    .with_parsed_as_commit(|commit| GitTreeId(commit.tree()))
+                    .ok_or_else(|| anyhow::anyhow!("Git object {:?} is not a commit", git_commit_id))?;
                 let objects = root_tree.list_all_entries((*ctx).clone(), blobstore.clone()).try_filter_map(|(path, entry)|{
                     cloned!(ctx, blobstore, filter);
                     async move {
@@ -131,7 +130,7 @@ async fn boundary_trees_and_blobs(
                 Ok(objects)
             }
         })
-        .try_buffered(concurrency.commits)
+        .try_buffered(concurrency.trees_and_blobs / 2)
         .try_concat()
         .await
 }
@@ -151,6 +150,7 @@ async fn trees_and_blobs_count(
         blobstore,
         filter,
         concurrency,
+        chain_breaking_mode,
         ..
     } = fetch_container.clone();
     let boundary_stream = stream::once(async move {
@@ -191,7 +191,12 @@ async fn trees_and_blobs_count(
                             if !filter_object(filter.clone(), &path, kind, size) {
                                 return Ok(None);
                             }
-                            let delta = delta_base(entry.as_ref(), delta_inclusion, filter);
+                            let delta = delta_base(
+                                entry.as_ref(),
+                                delta_inclusion,
+                                filter,
+                                chain_breaking_mode,
+                            );
                             let output = (
                                 entry.full_object_oid(),
                                 delta.map(|delta| delta.base_object_oid()),
@@ -271,6 +276,7 @@ fn packfile_stream_from_changesets<'a>(
         delta_inclusion,
         filter,
         concurrency,
+        chain_breaking_mode,
         ..
     } = fetch_container.clone();
 
@@ -340,6 +346,7 @@ fn packfile_stream_from_changesets<'a>(
                         entry.as_ref(),
                         delta_inclusion,
                         filter.clone(),
+                        chain_breaking_mode,
                     ))
                 {
                     break;
@@ -531,25 +538,21 @@ async fn tag_packfile_stream<'a>(
         .filter_map(|bookmark| async move {
             // If the bookmark is actually a tag but there is no mapping in bonsai_tag_mapping table for it, then it
             // means that its a simple tag and won't be included in the packfile as an object. If a mapping exists, then
-            // it will be included in the packfile as a raw Git object
-            if bookmark.is_tag() {
-                let tag_name = bookmark.name().to_string();
-                repo.bonsai_tag_mapping()
-                    .get_entry_by_tag_name(
-                        tag_name.clone(),
-                        bonsai_tag_mapping::Freshness::MaybeStale,
+            // it will be included in the packfile as a raw Git
+
+            // NOTE: There is no need to check if the bookmark is a tag. If its present in bonsai_tag_mapping table, then it
+            // is an annotated tag
+            let tag_name = bookmark.name().to_string();
+            repo.bonsai_tag_mapping()
+                .get_entry_by_tag_name(tag_name.clone(), bonsai_tag_mapping::Freshness::MaybeStale)
+                .await
+                .with_context(|| {
+                    format!(
+                        "Error in getting bonsai_tag_mapping entry for tag name {}",
+                        tag_name
                     )
-                    .await
-                    .with_context(|| {
-                        format!(
-                            "Error in getting bonsai_tag_mapping entry for tag name {}",
-                            tag_name
-                        )
-                    })
-                    .transpose()
-            } else {
-                None
-            }
+                })
+                .transpose()
         })
         .try_collect::<Vec<_>>()
         .await?;
@@ -653,6 +656,7 @@ pub async fn generate_pack_item_stream<'a>(
         request.concurrency,
         request.packfile_item_inclusion,
         Arc::new(None),
+        request.chain_breaking_mode,
     )?;
     // Get all the commits that are reachable from the bookmarks
     let mut target_commits = repo
@@ -795,6 +799,7 @@ pub async fn fetch_response<'a>(
         request.concurrency,
         packfile_item_inclusion,
         shallow_info.clone(),
+        request.chain_breaking_mode,
     )?;
     // Convert the base commits and head commits, which are represented as Git hashes, into Bonsai hashes
     // If the input contains tag object Ids, fetch the corresponding tag names
