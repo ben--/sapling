@@ -86,6 +86,9 @@ DESCRIPTION_REGEX: Pattern[str] = re.compile(
 # e.g.: Grafted e8470334d2058106534ac7d72485e6bfaa76ca01
 GRAFT_INFO_REGEX: Pattern[str] = re.compile("(?m)^(Grafted [a-f0-9]+)$")
 
+# Pattern for parsing diff ID and version (e.g., D1234567, D1234567V1, D1234567V1.2)
+DIFFID_VERSION_REGEX: Pattern[str] = re.compile(r"^D(\d+)(?:(V\d+(?:\.\d+)?))?$")
+
 DEFAULT_TIMEOUT = 60
 MAX_CONNECT_RETRIES = 3
 COMMITTEDSTATUS = "Committed"
@@ -513,7 +516,7 @@ def _cleanuplanded(repo, dryrun=False):
         elif status == "Abandoned":
             # filter out unhidable nodes
             draftnodes = {node for node in draftnodes if node in visible_heads}
-            markedcount_abandoned += _process_abandonded(
+            markedcount_abandoned += _process_abandoned(
                 repo,
                 diffid,
                 draftnodes,
@@ -584,7 +587,7 @@ def _query_phabricator(repo, diffids, diff_status_list):
         )
 
 
-def _process_abandonded(
+def _process_abandoned(
     repo,
     diffid,
     draftnodes,
@@ -954,7 +957,7 @@ def debuginternusername(ui, **opts):
     ui.write("%s\n" % name)
 
 
-def graphqlgetdiff(repo, diffid):
+def graphqlgetdiff(repo, diffid, version=None):
     """Resolves a phabricator Diff number to a commit hash of it's latest version"""
     if util.istest():
         hexnode = repo.ui.config("phrevset", "mock-D%s" % diffid)
@@ -979,7 +982,7 @@ def graphqlgetdiff(repo, diffid):
     timeout = repo.ui.configint("ssl", "timeout", 10)
     try:
         client = graphql.Client(repodir=os.getcwd(), repo=repo)
-        return client.getdifflatestversion(timeout, diffid)
+        return client.getdiffversion(timeout, diffid, version=version)
     except Exception as e:
         raise error.Abort(
             "Could not call phabricator graphql API: %s" % e,
@@ -1034,15 +1037,15 @@ def localgetdiff(repo, diffid):
     return None
 
 
-def search(repo, diffid):
+def search(repo, diffid, version=None):
     """Perform a GraphQL query first. If it fails, fallback to local search.
 
     Returns (node, None) or (None, graphql_response) tuple.
     """
 
     repo.ui.debug("[diffrev] Starting graphql call\n")
-    if repo.ui.configbool("phrevset", "graphqlonly"):
-        return (None, graphqlgetdiff(repo, diffid))
+    if repo.ui.configbool("phrevset", "graphqlonly") or version:
+        return (None, graphqlgetdiff(repo, diffid, version=version))
 
     try:
         return (None, graphqlgetdiff(repo, diffid))
@@ -1087,7 +1090,7 @@ def parsedesc(repo, resp, ignoreparsefailure):
 
 
 @util.lrucachefunc
-def diffidtonode(repo, diffid, localreponame=None):
+def diffidtonode(repo, diffid, localreponame=None, version=None):
     """Return node that matches a given Differential ID or None.
 
     The node might exist or not exist in the repo.
@@ -1105,7 +1108,7 @@ def diffidtonode(repo, diffid, localreponame=None):
             repo.ui.warn(_("Could not find diff D%s in changelog\n") % diffid)
         return node
 
-    node, resp = search(repo, diffid)
+    node, resp = search(repo, diffid, version=version)
 
     if node is not None:
         # The log walk found the diff, nothing more to do
@@ -1235,10 +1238,35 @@ def diffidtonode(repo, diffid, localreponame=None):
             return None
 
 
+def _try_parse_diffid_version(name):
+    """Parse names like D1234567V1 or D1234567 to a tuple of (diffid, version).
+
+    Returns None if the name is not valid.
+
+    >>> _try_parse_diffid_version("D1234567V1")
+    ('1234567', 'V1')
+    >>> _try_parse_diffid_version("D1234567V1.1")
+    ('1234567', 'V1.1')
+    >>> _try_parse_diffid_version("D1234567")
+    ('1234567', None)
+    >>> _try_parse_diffid_version("D1234567V")
+    >>> _try_parse_diffid_version("D1234567V1.1.1")
+    """
+    match = DIFFID_VERSION_REGEX.match(name)
+
+    if not match:
+        return None
+
+    diffid = match.group(1)
+    version = match.group(2)
+
+    return (diffid, version)
+
+
 def _lookupname(repo, name):
-    if name.startswith("D") and name[1:].isdigit():
-        diffid = name[1:]
-        node = diffidtonode(repo, diffid)
+    if diffid_version := _try_parse_diffid_version(name):
+        diffid, version = diffid_version
+        node = diffidtonode(repo, diffid, version=version)
         if node is not None and node in repo:
             return [node]
     return []
@@ -1264,17 +1292,18 @@ def _autopullphabdiff(
     if not repo.ui.configbool("phrevset", "autopull"):
         return
 
-    if (
-        name.startswith("D")
-        and name[1:].isdigit()
-        and (rewritepullrev or name not in repo)
+    if (diffid_version := _try_parse_diffid_version(name)) and (
+        rewritepullrev or name not in repo
     ):
-        diffid = name[1:]
-        node = diffidtonode(repo, diffid)
+        diffid, version = diffid_version
+        node = diffidtonode(repo, diffid, version=version)
         if node and (rewritepullrev or node not in repo):
             # Attempt to pull it. This also rewrites "pull -r Dxxx" to "pull -r
             # HASH".
-            friendlyname = "D%s (%s)" % (diffid, hex(node))
+            if version:
+                friendlyname = "D%s%s (%s)" % (diffid, version, hex(node))
+            else:
+                friendlyname = "D%s (%s)" % (diffid, hex(node))
             return autopull.pullattempt(headnodes=[node], friendlyname=friendlyname)
 
 

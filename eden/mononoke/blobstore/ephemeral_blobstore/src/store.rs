@@ -450,16 +450,13 @@ impl RepoEphemeralStoreInner {
         // Step 1: Mark the bubble as expired in the backing SQL Store.
         ctx.perf_counters()
             .increment_counter(PerfCounterType::SqlWrites);
-        let res = UpdateExpired::query(
+        UpdateExpired::query(
             &self.connections.write_connection,
             ctx.client_request_info(),
             &ExpiryStatus::Expired,
             &bubble_id,
         )
         .await?;
-        if res.affected_rows() != 1 {
-            return Err(EphemeralBlobstoreError::DeleteBubbleFailed(bubble_id).into());
-        }
         // If only marking is required, exit now.
         if let BubbleDeletionMode::MarkOnly = self.bubble_deletion_mode {
             return Ok(0); // Since 0 blob items were unlinked/removed.
@@ -472,15 +469,12 @@ impl RepoEphemeralStoreInner {
         // the backing SQL store.
         ctx.perf_counters()
             .increment_counter(PerfCounterType::SqlWrites);
-        let res = DeleteBubbleChangesetMapping::query(
+        DeleteBubbleChangesetMapping::query(
             &self.connections.write_connection,
             ctx.client_request_info(),
             &bubble_id,
         )
         .await?;
-        if res.affected_rows() > 1 {
-            return Err(EphemeralBlobstoreError::DeleteBubbleFailed(bubble_id).into());
-        }
         // When invoked through processes, this will always be a no-op. This is useful for
         // manually deleting a bubble regardless of its expiry status.
         ctx.perf_counters()
@@ -495,15 +489,12 @@ impl RepoEphemeralStoreInner {
         // Step 4: Delete the bubble itself from the backing SQL store.
         ctx.perf_counters()
             .increment_counter(PerfCounterType::SqlWrites);
-        let res = DeleteBubble::query(
+        DeleteBubble::query(
             &self.connections.write_connection,
             ctx.client_request_info(),
             &bubble_id,
         )
         .await?;
-        if res.affected_rows() > 1 {
-            return Err(EphemeralBlobstoreError::DeleteBubbleFailed(bubble_id).into());
-        }
         Ok(count)
     }
 
