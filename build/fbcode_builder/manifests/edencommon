@@ -5,7 +5,8 @@ shipit_project = edencommon
 shipit_fbcode_builder = true
 
 [git]
-repo_url = https://github.com/facebookexperimental/edencommon.git
+repo_url = https://github.com/ben--/edencommon.git
+rev = case-format
 
 [build]
 builder = cmake
