@@ -13,7 +13,7 @@ add_fbthrift_library(
     EdenService
   DEPENDS
     eden_config_thrift
-    fb303::fb303_thrift
+    fb303::fb303_core
 )
 add_fbthrift_library(
   streamingeden_thrift
