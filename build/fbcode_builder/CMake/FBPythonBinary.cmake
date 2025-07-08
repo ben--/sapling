@@ -121,9 +121,11 @@ function(add_fb_python_executable TARGET)
     NORMAL_DEPENDS ${ARG_NORMAL_DEPENDS}
   )
 
+  # FIXME: This abuse of INTERFACE_INCLUDE_DIRECTORIES is tightly coupled
+  # to the set_target_includes() below
   set(
     manifest_files
-    "$<TARGET_PROPERTY:${TARGET}.main_lib.py_lib,INTERFACE_INCLUDE_DIRECTORIES>"
+    "$<FILTER:$<TARGET_PROPERTY:${TARGET}.main_lib.py_lib,INTERFACE_INCLUDE_DIRECTORIES>,EXCLUDE,/.*/include>"
   )
   set(
     source_files
@@ -490,6 +492,8 @@ function(add_fb_python_library LIB_NAME)
   endforeach()
   configure_file("${tmp_manifest}" "${manifest_path}" COPYONLY)
 
+  # FIXME: this abuse of include directories is tightly coupled to the
+  # definition of manifest_files above.
   target_include_directories(
     "${LIB_NAME}.py_lib" INTERFACE
     "$<BUILD_INTERFACE:${manifest_path}>"
