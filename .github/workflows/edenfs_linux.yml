@@ -982,12 +982,12 @@ jobs:
        key: ${{ steps.paths.outputs.edencommon_CACHE_KEY }}-install
     - name: Build eden
       run: python3 build/fbcode_builder/getdeps.py --allow-system-packages build --no-tests --src-dir=. eden --project-install-prefix eden:/usr/local
-    - name: Copy artifacts
-      run: python3 build/fbcode_builder/getdeps.py --allow-system-packages fixup-dyn-deps --strip --src-dir=. eden _artifacts/linux --project-install-prefix eden:/usr/local --final-install-prefix /usr/local
-    - uses: actions/upload-artifact@v4
-      with:
-        name: eden
-        path: _artifacts
+    # - name: Copy artifacts
+    #   run: python3 build/fbcode_builder/getdeps.py --allow-system-packages fixup-dyn-deps --strip --src-dir=. eden _artifacts/linux --project-install-prefix eden:/usr/local --final-install-prefix /usr/local
+    # - uses: actions/upload-artifact@v4
+    #   with:
+    #     name: eden
+    #     path: _artifacts
     - name: Show disk space at end
       if: always()
       run: df -h
