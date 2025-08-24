@@ -42,4 +42,5 @@ xplat/thrift = thrift
 ^xplat/thrift/.castle/.*
 
 [cmake.defines]
+thriftpy3=ON
 BUILD_SHARED_LIBS=ON
