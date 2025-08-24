@@ -464,7 +464,7 @@ class InstallSysDepsCmd(ProjectCmdBase):
                     ]
                     + packages
                 )
-                cmd_argss.append(["pip", "install", "cython"])
+                cmd_argss.append(["pip", "install", "cython==3.0.8"])
                 cmd_argss.append(["pip", "install", "pex"])
         elif manager == "homebrew":
             packages = sorted(set(all_packages["homebrew"]))
