@@ -12,7 +12,7 @@ path = "src/test_utils.rs"
 
 [dependencies]
 anyhow = "1.0.98"
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
 maplit = "1.0"
 mononoke_api = { version = "0.1.0", path = "../../../mononoke_api" }

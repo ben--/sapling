@@ -7,9 +7,9 @@ edition = "2024"
 [dependencies]
 anyhow = "1.0.98"
 edenfs-error = { version = "0.1.0", path = "../../cli_rs/edenfs-error" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 fbthrift = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
-fbthrift_socket = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbthrift_socket = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 syn = { version = "1.0.109" }
 thrift_streaming_clients = { version = "0.1.0", path = "../thrift_streaming/clients" }
 tokio = { version = "1.45.0", features = ["full", "test-util", "tracing"] }

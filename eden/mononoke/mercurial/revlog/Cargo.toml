@@ -16,7 +16,7 @@ ascii = "1.0"
 bitflags = { version = "2.9", features = ["serde", "std"], default-features = false }
 bytes = { version = "1.10", features = ["serde"] }
 flate2 = { version = "1.0.33", features = ["rust_backend"], default-features = false }
-futures_ext = { package = "futures_01_ext", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_ext = { package = "futures_01_ext", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 futures_old = { package = "futures", version = "0.1.31" }
 memmap2 = "0.9.5"
 mercurial_types = { version = "0.1.0", path = "../types" }
@@ -26,6 +26,6 @@ thiserror = "2.0.12"
 
 [dev-dependencies]
 assert_matches = "1.5"
-failure_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+failure_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 mercurial_types-mocks = { version = "0.1.0", path = "../types/mocks" }
 mononoke_macros = { version = "0.1.0", path = "../../mononoke_macros" }

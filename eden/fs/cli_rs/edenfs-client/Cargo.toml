@@ -17,9 +17,9 @@ dunce = "1.0.5"
 edenfs-config = { version = "0.1.0", path = "../edenfs-config" }
 edenfs-error = { version = "0.1.0", path = "../edenfs-error" }
 edenfs-utils = { version = "0.1.0", path = "../edenfs-utils" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 hex = { version = "0.4.3", features = ["alloc"] }
 lazy_static = "1.5"
 libc = "0.2.139"
@@ -48,7 +48,7 @@ uuid = { version = "1.2", features = ["serde", "v4", "v5", "v6", "v7", "v8"] }
 
 [dev-dependencies]
 fb303_core_clients = { version = "0.0.0", git = "https://github.com/facebook/fb303.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 mockall = "0.13.1"
 serde_test = "1.0.167"
 tempfile = "3.22"

@@ -12,7 +12,7 @@ anyhow = "1.0.98"
 async-trait = "0.1.86"
 bookmarks = { version = "0.1.0", path = "../bookmarks" }
 context = { version = "0.1.0", path = "../server/context" }
-facet = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+facet = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 mononoke_types = { version = "0.1.0", path = "../mononoke_types" }
 pushrebase_hook = { version = "0.1.0", path = "../pushrebase/pushrebase_hook" }
 sql_construct = { version = "0.1.0", path = "../common/sql_construct" }
@@ -21,10 +21,10 @@ sql_ext = { version = "0.1.0", path = "../common/rust/sql_ext" }
 [dev-dependencies]
 blobstore = { version = "0.1.0", path = "../blobstore" }
 bonsai_hg_mapping = { version = "0.1.0", path = "../bonsai_hg_mapping" }
-borrowed = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+borrowed = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 commit_graph = { version = "0.1.0", path = "../repo_attributes/commit_graph/commit_graph" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 filestore = { version = "0.1.0", path = "../filestore" }
 maplit = "1.0"
 metaconfig_types = { version = "0.1.0", path = "../metaconfig/types" }

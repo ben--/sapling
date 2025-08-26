@@ -38,21 +38,21 @@ blobstore_factory = { version = "0.1.0", path = "blobstore/factory" }
 bonsai_git_mapping = { version = "0.1.0", path = "bonsai_git_mapping" }
 bonsai_hg_mapping = { version = "0.1.0", path = "bonsai_hg_mapping" }
 bonsai_svnrev_mapping = { version = "0.1.0", path = "bonsai_svnrev_mapping" }
-borrowed = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+borrowed = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 bytesize = "2.0"
 check_git_wc = { version = "0.1.0", path = "git/check_git_wc" }
 clap = { version = "4.5.42", features = ["derive", "env", "string", "unicode", "wrap_help"] }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 cmdlib_logging = { version = "0.1.0", path = "cmdlib/log" }
 commit_graph = { version = "0.1.0", path = "repo_attributes/commit_graph/commit_graph" }
 context = { version = "0.1.0", path = "server/context" }
-facet = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+facet = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
 futures-util = { version = "0.3.30", features = ["compat"] }
-futures_retry = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_retry = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 git2 = "0.20.2"
-lock_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+lock_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 mercurial_derivation = { version = "0.1.0", path = "derived_data/mercurial_derivation" }
 mercurial_types = { version = "0.1.0", path = "mercurial/types" }
 metaconfig_types = { version = "0.1.0", path = "metaconfig/types" }
@@ -68,7 +68,7 @@ repo_identity = { version = "0.1.0", path = "repo_attributes/repo_identity" }
 scuba_ext = { version = "0.1.0", path = "common/scuba_ext" }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_derive = "1.0.185"
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 sqlblob = { version = "0.1.0", path = "blobstore/sqlblob" }
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
 toml = { version = "0.9.2", features = ["preserve_order"] }

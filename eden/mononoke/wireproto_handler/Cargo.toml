@@ -9,9 +9,9 @@ license = "GPLv2+"
 
 [dependencies]
 bookmarks = { version = "0.1.0", path = "../bookmarks" }
-facet = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+facet = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 metaconfig_types = { version = "0.1.0", path = "../metaconfig/types" }
 mutable_counters = { version = "0.1.0", path = "../mutable_counters" }
 scuba_ext = { version = "0.1.0", path = "../common/scuba_ext" }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 synced_commit_mapping = { version = "0.1.0", path = "../commit_rewriting/synced_commit_mapping" }

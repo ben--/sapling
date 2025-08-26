@@ -23,15 +23,15 @@ bonsai_tag_mapping = { version = "0.1.0", path = "../repo_attributes/bonsai_tag_
 bookmarks = { version = "0.1.0", path = "../bookmarks" }
 bookmarks_cache = { version = "0.1.0", path = "../bookmarks/bookmarks_cache" }
 bookmarks_movement = { version = "0.1.0", path = "../bookmarks/bookmarks_movement" }
-borrowed = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-bounded_traversal = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+borrowed = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+bounded_traversal = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 bulk_derivation = { version = "0.1.0", path = "../derived_data/bulk_derivation" }
 bundle_uri = { version = "0.1.0", path = "../git/bundle_uri" }
 bytes = { version = "1.10", features = ["serde"] }
 changeset_info = { version = "0.1.0", path = "../derived_data/changeset_info" }
 changesets_creation = { version = "0.1.0", path = "../changesets/changesets_creation" }
 chrono = { version = "0.4.41", features = ["clock", "serde", "std"], default-features = false }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 commit_cloud = { version = "0.1.0", path = "../commit_cloud" }
 commit_cloud_types = { version = "0.1.0", path = "../commit_cloud/types" }
 commit_graph = { version = "0.1.0", path = "../repo_attributes/commit_graph/commit_graph" }
@@ -42,15 +42,15 @@ derivative = "2.2"
 derived_data = { version = "0.1.0", path = "../derived_data" }
 derived_data_manager = { version = "0.1.0", path = "../derived_data/manager" }
 ephemeral_blobstore = { version = "0.1.0", path = "../blobstore/ephemeral_blobstore" }
-facet = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+facet = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 filenodes = { version = "0.1.0", path = "../filenodes" }
 filestore = { version = "0.1.0", path = "../filestore" }
 fsnodes = { version = "0.1.0", path = "../derived_data/fsnodes" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
 futures-util = { version = "0.3.30", features = ["compat"] }
-futures_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-futures_lazy_shared = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+futures_lazy_shared = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 futures_watchdog = { version = "0.1.0", path = "../common/futures_watchdog" }
 git_ref_content_mapping = { version = "0.1.0", path = "../git_ref_content_mapping" }
 git_source_of_truth = { version = "0.1.0", path = "../git_source_of_truth" }
@@ -61,7 +61,7 @@ history_traversal = { version = "0.1.0", path = "../features/history_traversal" 
 hook_manager = { version = "0.1.0", path = "../repo_attributes/hook_manager/hook_manager" }
 hooks = { version = "0.1.0", path = "../hooks" }
 itertools = "0.14.0"
-justknobs = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+justknobs = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 lazy_static = "1.5"
 live_commit_sync_config = { version = "0.1.0", path = "../commit_rewriting/live_commit_sync_config" }
 manifest = { version = "0.1.0", path = "../manifest" }
@@ -104,12 +104,12 @@ sapling-xdiff = { version = "0.1.0", path = "../../scm/lib/xdiff" }
 scuba_ext = { version = "0.1.0", path = "../common/scuba_ext" }
 skeleton_manifest = { version = "0.1.0", path = "../derived_data/skeleton_manifest" }
 skeleton_manifest_v2 = { version = "0.1.0", path = "../derived_data/skeleton_manifest_v2" }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 smallvec = { version = "1.15", features = ["impl_bincode", "serde", "specialization", "union"] }
-sorted_vector_map = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+sorted_vector_map = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 sql_commit_graph_storage = { version = "0.1.0", path = "../repo_attributes/commit_graph/sql_commit_graph_storage" }
 sql_query_config = { version = "0.1.0", path = "../repo_attributes/sql_query_config" }
-stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 streaming_clone = { version = "0.1.0", path = "../repo_client/streaming_clone" }
 synced_commit_mapping = { version = "0.1.0", path = "../commit_rewriting/synced_commit_mapping" }
 thiserror = "2.0.12"
@@ -122,8 +122,8 @@ wireproto_handler = { version = "0.1.0", path = "../wireproto_handler" }
 [dev-dependencies]
 assert_matches = "1.5"
 commit_graph_testlib = { version = "0.1.0", path = "../repo_attributes/commit_graph/commit_graph_testlib" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 fixtures = { version = "0.1.0", path = "../tests/fixtures" }
 gix-object = "0.49.1"
 mononoke_macros = { version = "0.1.0", path = "../mononoke_macros" }

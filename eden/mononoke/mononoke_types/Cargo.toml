@@ -16,12 +16,12 @@ bincode = { version = "2", features = ["serde"] }
 bit-set = "0.5"
 blake2 = "0.10"
 blobstore = { version = "0.1.0", path = "../blobstore" }
-borrowed = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-bounded_traversal = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+borrowed = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+bounded_traversal = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 bytes = { version = "1.10", features = ["serde"] }
 chrono = { version = "0.4.41", features = ["clock", "serde", "std"], default-features = false }
 chrono-english = "0.1.7"
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 context = { version = "0.1.0", path = "../server/context" }
 derivative = "2.2"
 derived_data_type_if = { version = "0.1.0", path = "../derived_data/if" }
@@ -41,17 +41,17 @@ maplit = "1.0"
 mononoke_types_serialization = { version = "0.1.0", path = "serialization" }
 nonzero_ext = "0.2"
 quickcheck = "1.0"
-quickcheck_arbitrary_derive = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+quickcheck_arbitrary_derive = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 regex = "1.11.1"
 sapling-edenapi_types = { version = "0.1.0", path = "../../scm/lib/edenapi/types" }
 sapling-xdiff = { version = "0.1.0", path = "../../scm/lib/xdiff" }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_derive = "1.0.185"
 sha1 = "0.10.5"
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 smallvec = { version = "1.15", features = ["impl_bincode", "serde", "specialization", "union"] }
-sorted_vector_map = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-sql = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+sorted_vector_map = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+sql = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 strum = { version = "0.27.1", features = ["derive"] }
 thiserror = "2.0.12"
 thrift_convert = { version = "0.1.0", path = "../common/thrift_convert" }
@@ -59,8 +59,8 @@ vec_map = "0.8"
 
 [dev-dependencies]
 crossbeam = "0.8"
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 memblob = { version = "0.1.0", path = "../blobstore/memblob" }
 mononoke_macros = { version = "0.1.0", path = "../mononoke_macros" }
 paste = "1.0.14"

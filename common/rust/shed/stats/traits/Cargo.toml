@@ -7,8 +7,8 @@ authors = ["Facebook <opensource+rust-shed@fb.com>"]
 edition = "2024"
 description = "Traits for stats crate"
 readme = "../../README.md"
-homepage = "https://github.com/facebookexperimental/rust-shed/"
-repository = "https://github.com/facebookexperimental/rust-shed/"
+homepage = "https://github.com/ben--/rust-shed/"
+repository = "https://github.com/ben--/rust-shed/"
 license = "MIT OR Apache-2.0"
 
 [lib]

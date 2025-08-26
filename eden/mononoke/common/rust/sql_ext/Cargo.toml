@@ -14,19 +14,19 @@ aws-config = "1.3.3"
 aws-sdk-secretsmanager = "1.45.0"
 base64 = { version = "0.22.1", features = ["alloc"] }
 bincode = { version = "2", features = ["serde"] }
-borrowed = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+borrowed = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 bytes = { version = "1.10", features = ["serde"] }
 caching_ext = { version = "0.1.0", path = "../caching_ext" }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 derivative = "2.2"
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_retry = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_retry = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 itertools = "0.14.0"
-justknobs = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+justknobs = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 maplit = "1.0"
-memcache = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+memcache = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 mononoke_types = { version = "0.1.0", path = "../../../mononoke_types" }
 mysql_async = "0.31.2"
 once_cell = "1.21"
@@ -37,13 +37,13 @@ scuba_ext = { version = "0.1.0", path = "../../scuba_ext" }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_cbor = "0.11"
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-sql = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-sql_common = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+sql = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+sql_common = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 sql_ext_proc_macros = { version = "0.1.0", path = "proc_macros" }
 sql_query_config = { version = "0.1.0", path = "../../../repo_attributes/sql_query_config" }
 sql_query_telemetry = { version = "0.1.0", path = "sql_query_telemetry" }
-stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 thiserror = "2.0.12"
 time_measuring = { version = "0.1.0", path = "../../time_measuring" }
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
@@ -53,9 +53,9 @@ vec1 = { version = "1", features = ["serde"] }
 
 [dev-dependencies]
 assert_matches = "1.5"
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 metadata = { version = "0.1.0", path = "../../metadata" }
 mononoke_macros = { version = "0.1.0", path = "../../../mononoke_macros" }
 pretty_assertions = { version = "1.2", features = ["alloc"], default-features = false }
-sql_tests_lib = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+sql_tests_lib = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 tempfile = "3.22"

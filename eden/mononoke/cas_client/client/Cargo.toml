@@ -16,11 +16,11 @@ async-trait = "0.1.86"
 blobstore = { version = "0.1.0", path = "../../blobstore" }
 bytes = { version = "1.10", features = ["serde"] }
 context = { version = "0.1.0", path = "../../server/context" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 fileblob = { version = "0.1.0", path = "../../blobstore/fileblob" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 mononoke_types = { version = "0.1.0", path = "../../mononoke_types" }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 thiserror = "2.0.12"
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }

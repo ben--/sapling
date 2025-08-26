@@ -28,7 +28,7 @@ name = "commitcloudsubscriber"
 anyhow = "1.0.98"
 base64 = { version = "0.22.1", features = ["alloc"] }
 filetime = "0.2.25"
-hostcaps = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+hostcaps = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 lazy_static = "1.5"
 log = { version = "0.4.27", features = ["kv_unstable", "kv_unstable_std"] }
 mime = "0.3.14"

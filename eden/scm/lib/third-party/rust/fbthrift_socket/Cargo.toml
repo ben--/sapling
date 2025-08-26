@@ -8,7 +8,7 @@ include = ["lib.rs"]
 path = "lib.rs"
 
 [dependencies]
-fbthrift_socket = { git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbthrift_socket = { git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 
-[patch."https://github.com/facebookexperimental/rust-shed.git"]
+[patch."https://github.com/ben--/rust-shed.git"]
 fbthrift_socket = { path = "../../../../../../common/rust/shed/fbthrift_ext/fbthrift_ext/socket" }

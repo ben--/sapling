@@ -20,25 +20,25 @@ blobsync = { version = "0.1.0", path = "../../../blobrepo/blobsync" }
 bonsai_git_mapping = { version = "0.1.0", path = "../../../bonsai_git_mapping" }
 bonsai_hg_mapping = { version = "0.1.0", path = "../../../bonsai_hg_mapping" }
 bookmarks = { version = "0.1.0", path = "../../../bookmarks" }
-borrowed = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+borrowed = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 bytes = { version = "1.10", features = ["serde"] }
 cacheblob = { version = "0.1.0", path = "../../../blobstore/cacheblob" }
 changesets_creation = { version = "0.1.0", path = "../../../changesets/changesets_creation" }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 commit_graph = { version = "0.1.0", path = "../../../repo_attributes/commit_graph/commit_graph" }
 context = { version = "0.1.0", path = "../../../server/context" }
 derivative = "2.2"
 derived_data = { version = "0.1.0", path = "../../../derived_data" }
 either = "1.5"
-facet = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+facet = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 filenodes = { version = "0.1.0", path = "../../../filenodes" }
 filestore = { version = "0.1.0", path = "../../../filestore" }
 fsnodes = { version = "0.1.0", path = "../../../derived_data/fsnodes" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 git_types = { version = "0.1.0", path = "../../../git/git_types" }
 itertools = "0.14.0"
-justknobs = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+justknobs = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 manifest = { version = "0.1.0", path = "../../../manifest" }
 maplit = "1.0"
 megarepo_configs = { version = "0.1.0", path = "../../../megarepo_api/if/megarepo_configs" }
@@ -55,14 +55,14 @@ repo_identity = { version = "0.1.0", path = "../../../repo_attributes/repo_ident
 reporting = { version = "0.1.0", path = "../../../commit_rewriting/reporting" }
 scuba_ext = { version = "0.1.0", path = "../../../common/scuba_ext" }
 skeleton_manifest = { version = "0.1.0", path = "../../../derived_data/skeleton_manifest" }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-sorted_vector_map = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+sorted_vector_map = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 sql_ext = { version = "0.1.0", path = "../../../common/rust/sql_ext" }
 thiserror = "2.0.12"
 
 [dev-dependencies]
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 mononoke_macros = { version = "0.1.0", path = "../../../mononoke_macros" }
 test_repo_factory = { version = "0.1.0", path = "../../../repo_factory/test_repo_factory" }
 tests_utils = { version = "0.1.0", path = "../../../tests/utils" }
