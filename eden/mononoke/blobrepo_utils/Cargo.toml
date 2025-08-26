@@ -19,7 +19,7 @@ blobrepo_override = { version = "0.1.0", path = "../blobrepo/override" }
 blobstore = { version = "0.1.0", path = "../blobstore" }
 bonsai_hg_mapping = { version = "0.1.0", path = "../bonsai_hg_mapping" }
 cacheblob = { version = "0.1.0", path = "../blobstore/cacheblob" }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 commit_graph = { version = "0.1.0", path = "../repo_attributes/commit_graph/commit_graph" }
 context = { version = "0.1.0", path = "../server/context" }
 dashmap = { version = "5.5.3", features = ["rayon", "serde"] }
@@ -31,7 +31,7 @@ mononoke_macros = { version = "0.1.0", path = "../mononoke_macros" }
 mononoke_types = { version = "0.1.0", path = "../mononoke_types" }
 repo_blobstore = { version = "0.1.0", path = "../repo_attributes/repo_blobstore" }
 repo_derived_data = { version = "0.1.0", path = "../repo_attributes/repo_derived_data" }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 thiserror = "2.0.12"
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
 tokio-stream = { version = "0.1.17", features = ["fs", "io-util", "net", "signal", "sync", "time"] }
@@ -39,9 +39,9 @@ tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 
 [dev-dependencies]
 bookmarks = { version = "0.1.0", path = "../bookmarks" }
-facet = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+facet = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 filestore = { version = "0.1.0", path = "../filestore" }
 fixtures = { version = "0.1.0", path = "../tests/fixtures" }
 repo_identity = { version = "0.1.0", path = "../repo_attributes/repo_identity" }

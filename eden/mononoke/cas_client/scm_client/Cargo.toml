@@ -20,5 +20,5 @@ filestore = { version = "0.1.0", path = "../../filestore" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
 mercurial_types = { version = "0.1.0", path = "../../mercurial/types" }
 mononoke_types = { version = "0.1.0", path = "../../mononoke_types" }
-stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 thiserror = "2.0.12"

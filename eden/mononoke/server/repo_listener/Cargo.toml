@@ -12,23 +12,23 @@ anyhow = "1.0.98"
 base64 = { version = "0.22.1", features = ["alloc"] }
 bookmarks = { version = "0.1.0", path = "../../bookmarks" }
 bytes = { version = "1.10", features = ["serde"] }
-cached_config = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cached_config = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 cats = { version = "0.1.0", path = "../../cats" }
 chrono = { version = "0.4.41", features = ["clock", "serde", "std"], default-features = false }
 connection_security_checker = { version = "0.1.0", path = "../../common/connection_security_checker" }
 context = { version = "0.1.0", path = "../context" }
 edenapi_service = { version = "0.1.0", path = "../../edenapi_service" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
 futures-util = { version = "0.3.30", features = ["compat"] }
-futures_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 gotham_ext = { version = "0.1.0", path = "../../gotham_ext" }
 hgproto = { version = "0.1.0", path = "../../hgproto" }
-hostname = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+hostname = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 http = "0.2"
 hyper = { version = "0.14.26", features = ["client", "http1", "http2", "stream"] }
-justknobs = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+justknobs = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 lazy_static = "1.5"
 metaconfig_types = { version = "0.1.0", path = "../../metaconfig/types" }
 metadata = { version = "0.1.0", path = "../../common/metadata" }
@@ -53,12 +53,12 @@ scuba_ext = { version = "0.1.0", path = "../../common/scuba_ext" }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 session_id = { version = "0.1.0", path = "../../common/session_id" }
 sha1 = "0.10.5"
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 sshrelay = { version = "0.1.0", path = "../../sshrelay" }
-stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 textwrap = { version = "0.16.0", features = ["terminal_size"] }
 thiserror = "2.0.12"
-time_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+time_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
 tokio-openssl = "0.6.5"
 tokio-util = { version = "0.7.15", features = ["full"] }

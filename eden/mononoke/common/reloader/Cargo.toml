@@ -11,15 +11,15 @@ license = "GPLv2+"
 anyhow = "1.0.98"
 arc-swap = { version = "1.5", features = ["weak"] }
 async-trait = "0.1.86"
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 context = { version = "0.1.0", path = "../../server/context" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 rand = { version = "0.8", features = ["small_rng"] }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
 
 [dev-dependencies]
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 mononoke_macros = { version = "0.1.0", path = "../../mononoke_macros" }

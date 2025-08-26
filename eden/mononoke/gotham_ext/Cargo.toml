@@ -12,21 +12,21 @@ anyhow = "1.0.98"
 async-compression = { version = "0.4.9", features = ["brotli", "bzip2", "deflate", "futures-io", "gzip", "tokio", "zlib", "zstd", "zstdmt"] }
 async-trait = "0.1.86"
 bytes = { version = "1.10", features = ["serde"] }
-cached_config = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cached_config = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 cats = { version = "0.1.0", path = "../cats" }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 connection_security_checker = { version = "0.1.0", path = "../common/connection_security_checker" }
 context = { version = "0.1.0", path = "../server/context" }
 either = "1.5"
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 gotham = "0.7.1"
 gotham_derive = "0.7.0"
 hex = { version = "0.4.3", features = ["alloc"] }
 http = "0.2"
 hyper = { version = "0.14.26", features = ["client", "http1", "http2", "stream"] }
-justknobs = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+justknobs = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 metaconfig_types = { version = "0.1.0", path = "../metaconfig/types" }
 metadata = { version = "0.1.0", path = "../common/metadata" }
 mime = "0.3.14"
@@ -42,8 +42,8 @@ sapling-clientinfo = { version = "0.1.0", path = "../../scm/lib/clientinfo" }
 scopeguard = "1.2.0"
 scuba_ext = { version = "0.1.0", path = "../common/scuba_ext" }
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-time_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+time_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
 tokio-openssl = "0.6.5"
 tokio-util = { version = "0.7.15", features = ["full"] }

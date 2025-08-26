@@ -17,7 +17,7 @@ doc = false
 [dependencies]
 anyhow = "1.0.98"
 async-trait = "0.1.86"
-codegen_includer_proc_macro = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+codegen_includer_proc_macro = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 fbthrift = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
 rust = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
@@ -26,4 +26,4 @@ tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 xdb_gc_structs__types = { package = "xdb_gc_structs", version = "0.1.0", path = ".." }
 
 [build-dependencies]
-thrift_compiler = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+thrift_compiler = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }

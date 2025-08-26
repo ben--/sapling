@@ -24,17 +24,17 @@ fbthrift = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbth
 futures_watchdog = { version = "0.1.0", path = "../common/futures_watchdog" }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_derive = "1.0.185"
-stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 strum = { version = "0.27.1", features = ["derive"] }
 thiserror = "2.0.12"
 trait-set = "0.3.0"
 zstd = { version = "0.13", features = ["experimental", "zstdmt"] }
 
 [dev-dependencies]
-borrowed = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+borrowed = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 cacheblob = { version = "0.1.0", path = "cacheblob" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 fileblob = { version = "0.1.0", path = "fileblob" }
 memblob = { version = "0.1.0", path = "memblob" }
 mononoke_macros = { version = "0.1.0", path = "../mononoke_macros" }

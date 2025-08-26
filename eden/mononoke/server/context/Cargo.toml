@@ -15,7 +15,7 @@ doc = false
 [dependencies]
 async_limiter = { version = "0.1.0", path = "../../common/async_limiter" }
 chrono = { version = "0.4.41", features = ["clock", "serde", "std"], default-features = false }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 governor = "0.3.2"
 metadata = { version = "0.1.0", path = "../../common/metadata" }
 mononoke_macros = { version = "0.1.0", path = "../../mononoke_macros" }
@@ -25,6 +25,6 @@ sapling-clientinfo = { version = "0.1.0", path = "../../../scm/lib/clientinfo" }
 scribe_ext = { version = "0.1.0", path = "../../common/scribe_ext" }
 scuba_ext = { version = "0.1.0", path = "../../common/scuba_ext" }
 session_id = { version = "0.1.0", path = "../../common/session_id" }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-slog_glog_fmt = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+slog_glog_fmt = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 sql_query_telemetry = { version = "0.1.0", path = "../../common/rust/sql_ext/sql_query_telemetry" }

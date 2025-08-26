@@ -26,8 +26,8 @@ tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
 
 [dev-dependencies]
 bytes = { version = "1.10", features = ["serde"] }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 flate2 = { version = "1.0.33", features = ["rust_backend"], default-features = false }
 git_delta = { version = "0.1.0", path = "../../third_party/git_delta" }
 gix-features = { version = "0.42.1", features = ["parallel"] }

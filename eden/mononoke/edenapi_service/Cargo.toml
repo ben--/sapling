@@ -18,15 +18,15 @@ bonsai_hg_mapping = { version = "0.1.0", path = "../bonsai_hg_mapping" }
 bookmarks = { version = "0.1.0", path = "../bookmarks" }
 bookmarks_movement = { version = "0.1.0", path = "../bookmarks/bookmarks_movement" }
 bytes = { version = "1.10", features = ["serde"] }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 commit_cloud_types = { version = "0.1.0", path = "../commit_cloud/types" }
 commit_graph = { version = "0.1.0", path = "../repo_attributes/commit_graph/commit_graph" }
 context = { version = "0.1.0", path = "../server/context" }
 ephemeral_blobstore = { version = "0.1.0", path = "../blobstore/ephemeral_blobstore" }
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 filestore = { version = "0.1.0", path = "../filestore" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 git_types = { version = "0.1.0", path = "../git/git_types" }
 gotham = "0.7.1"
 gotham_derive = "0.7.0"
@@ -36,7 +36,7 @@ hooks = { version = "0.1.0", path = "../hooks" }
 http = "0.2"
 hyper = { version = "0.14.26", features = ["client", "http1", "http2", "stream"] }
 itertools = "0.14.0"
-justknobs = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+justknobs = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 lazy_static = "1.5"
 manifest = { version = "0.1.0", path = "../manifest" }
 maplit = "1.0"
@@ -67,12 +67,12 @@ serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_cbor = "0.11"
 serde_json = { version = "1.0.140", features = ["alloc", "float_roundtrip", "raw_value", "unbounded_depth"] }
 sha2 = "0.10.6"
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 smallvec = { version = "1.15", features = ["impl_bincode", "serde", "specialization", "union"] }
-sorted_vector_map = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+sorted_vector_map = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 thiserror = "2.0.12"
-time_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+time_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 time_window_counter = { version = "0.1.0", path = "../time_window_counter" }
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }
 tokio-util = { version = "0.7.15", features = ["full"] }
@@ -80,5 +80,5 @@ tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 vec1 = { version = "1", features = ["serde"] }
 
 [dev-dependencies]
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 rate_limiting_config = { version = "0.1.0", path = "../../../configerator/structs/scm/mononoke/ratelimiting" }

@@ -14,18 +14,18 @@ bonsai_git_mapping = { version = "0.1.0", path = "../../bonsai_git_mapping" }
 bonsai_tag_mapping = { version = "0.1.0", path = "../../repo_attributes/bonsai_tag_mapping" }
 bookmarks = { version = "0.1.0", path = "../../bookmarks" }
 bookmarks_cache = { version = "0.1.0", path = "../../bookmarks/bookmarks_cache" }
-buffered_weighted = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+buffered_weighted = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 bulk_derivation = { version = "0.1.0", path = "../../derived_data/bulk_derivation" }
 bytes = { version = "1.10", features = ["serde"] }
 clap = { version = "4.5.42", features = ["derive", "env", "string", "unicode", "wrap_help"] }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 commit_graph = { version = "0.1.0", path = "../../repo_attributes/commit_graph/commit_graph" }
 commit_graph_types = { version = "0.1.0", path = "../../repo_attributes/commit_graph/commit_graph_types" }
 context = { version = "0.1.0", path = "../../server/context" }
 faster-hex = "0.6.1"
 filestore = { version = "0.1.0", path = "../../filestore" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 git_ref_content_mapping = { version = "0.1.0", path = "../../git_ref_content_mapping" }
 git_symbolic_refs = { version = "0.1.0", path = "../../git_symbolic_refs" }
 git_types = { version = "0.1.0", path = "../git_types" }

@@ -19,15 +19,15 @@ bookmarks_movement = { version = "0.1.0", path = "../../bookmarks/bookmarks_move
 bulk_derivation = { version = "0.1.0", path = "../../derived_data/bulk_derivation" }
 bytes = { version = "1.10", features = ["serde"] }
 changesets_creation = { version = "0.1.0", path = "../../changesets/changesets_creation" }
-cloned = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+cloned = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 commit_graph = { version = "0.1.0", path = "../../repo_attributes/commit_graph/commit_graph" }
 context = { version = "0.1.0", path = "../../server/context" }
 derived_data_manager = { version = "0.1.0", path = "../../derived_data/manager" }
 encoding_rs = "0.8"
 filestore = { version = "0.1.0", path = "../../filestore" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
-futures_retry = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-futures_stats = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+futures_retry = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+futures_stats = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 git_symbolic_refs = { version = "0.1.0", path = "../../git_symbolic_refs" }
 git_types = { version = "0.1.0", path = "../git_types" }
 gix-actor = "0.35.1"
@@ -48,8 +48,8 @@ repo_derived_data = { version = "0.1.0", path = "../../repo_attributes/repo_deri
 repo_identity = { version = "0.1.0", path = "../../repo_attributes/repo_identity" }
 sapling-clientinfo = { version = "0.1.0", path = "../../../scm/lib/clientinfo" }
 scuba_ext = { version = "0.1.0", path = "../../common/scuba_ext" }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 smallvec = { version = "1.15", features = ["impl_bincode", "serde", "specialization", "union"] }
-sorted_vector_map = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+sorted_vector_map = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 tls = { version = "0.1.0", path = "../../cmdlib/mononoke_app/tls" }
 tokio = { version = "1.47.1", features = ["full", "test-util", "tracing"] }

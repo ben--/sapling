@@ -18,7 +18,7 @@ doc = false
 [dependencies]
 anyhow = "1.0.98"
 async-trait = "0.1.86"
-codegen_includer_proc_macro = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+codegen_includer_proc_macro = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 fbthrift = { version = "0.0.1+unstable", path = "../../.." }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
 java__types = { package = "java", version = "0.0.1+unstable", path = ".." }
@@ -27,4 +27,4 @@ scope_clients = { version = "0.0.1+unstable", path = "../../scope/clients" }
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 
 [build-dependencies]
-thrift_compiler = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+thrift_compiler = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }

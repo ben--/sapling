@@ -37,12 +37,12 @@ repo_update_logger = { version = "0.1.0", path = "../features/repo_update_logger
 sapling-dag-types = { version = "0.1.0", path = "../../scm/lib/dag/dag-types" }
 sapling-edenapi_types = { version = "0.1.0", path = "../../scm/lib/edenapi/types" }
 sapling-revisionstore_types = { version = "0.1.0", path = "../../scm/lib/revisionstore/types" }
-slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+slog = { package = "tracing_slog_compat", version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 unbundle = { version = "0.1.0", path = "../repo_client/unbundle" }
 
 [dev-dependencies]
-fbinit = { version = "0.2.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
-fbinit-tokio = { version = "0.1.2", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
+fbinit-tokio = { version = "0.1.2", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 fixtures = { version = "0.1.0", path = "../tests/fixtures" }
 mononoke_macros = { version = "0.1.0", path = "../mononoke_macros" }
 test_repo_factory = { version = "0.1.0", path = "../repo_factory/test_repo_factory" }

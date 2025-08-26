@@ -10,12 +10,12 @@ license = "GPLv2+"
 [dependencies]
 anyhow = "1.0.98"
 ascii = "1.0"
-ascii_ext = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+ascii_ext = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 clap = { version = "4.5.42", features = ["derive", "env", "string", "unicode", "wrap_help"] }
 quickcheck = "1.0"
-quickcheck_arbitrary_derive = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+quickcheck_arbitrary_derive = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 sapling-edenapi_types = { version = "0.1.0", path = "../../../scm/lib/edenapi/types" }
-sql = { version = "0.1.0", git = "https://github.com/facebookexperimental/rust-shed.git", branch = "main" }
+sql = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 
 [dev-dependencies]
 mononoke_macros = { version = "0.1.0", path = "../../mononoke_macros" }
