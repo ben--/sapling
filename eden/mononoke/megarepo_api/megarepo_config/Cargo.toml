@@ -16,7 +16,7 @@ clap = { version = "4.5.42", features = ["derive", "env", "string", "unicode", "
 context = { version = "0.1.0", path = "../../server/context" }
 facet = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
 fbinit = { version = "0.2.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
-fbthrift = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
+fbthrift = { version = "0.0.1+unstable", git = "https://github.com/ben--/fbthrift.git", branch = "compile-fix" }
 futures_watchdog = { version = "0.1.0", path = "../../common/futures_watchdog" }
 megarepo_configs = { version = "0.1.0", path = "../if/megarepo_configs" }
 megarepo_error = { version = "0.1.0", path = "../megarepo_error" }

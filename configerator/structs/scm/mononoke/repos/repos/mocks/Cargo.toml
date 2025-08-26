@@ -18,13 +18,13 @@ doc = false
 anyhow = "1.0.98"
 async-trait = "0.1.86"
 codegen_includer_proc_macro = { version = "0.1.0", git = "https://github.com/ben--/rust-shed.git", branch = "scubasample-lifetime" }
-fbthrift = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
+fbthrift = { version = "0.0.1+unstable", git = "https://github.com/ben--/fbthrift.git", branch = "compile-fix" }
 futures = { version = "0.3.31", features = ["async-await", "compat"] }
 repos__clients = { package = "repos_clients", version = "0.1.0", path = "../clients" }
 repos__types = { package = "repos", version = "0.1.0", path = ".." }
-rust = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
-rust_clients = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
-rust_mocks = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
+rust = { version = "0.0.1+unstable", git = "https://github.com/ben--/fbthrift.git", branch = "compile-fix" }
+rust_clients = { version = "0.0.1+unstable", git = "https://github.com/ben--/fbthrift.git", branch = "compile-fix" }
+rust_mocks = { version = "0.0.1+unstable", git = "https://github.com/ben--/fbthrift.git", branch = "compile-fix" }
 tracing = { version = "0.1.41", features = ["attributes", "valuable"] }
 
 [build-dependencies]

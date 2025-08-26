@@ -18,7 +18,7 @@ bytes = { version = "1.10", features = ["serde"] }
 context = { version = "0.1.0", path = "../../server/context" }
 derived_data_manager = { version = "0.1.0", path = "../manager" }
 derived_data_service_if = { version = "0.1.0", path = "../remote/if" }
-fbthrift = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
+fbthrift = { version = "0.0.1+unstable", git = "https://github.com/ben--/fbthrift.git", branch = "compile-fix" }
 mononoke_types = { version = "0.1.0", path = "../../mononoke_types" }
 mononoke_types_serialization = { version = "0.1.0", path = "../../mononoke_types/serialization" }
 smallvec = { version = "1.15", features = ["impl_bincode", "serde", "specialization", "union"] }
