@@ -20,7 +20,7 @@ bytes = { version = "1.10", features = ["serde"] }
 clap = { version = "4.5.42", features = ["derive", "env", "string", "unicode", "wrap_help"] }
 context = { version = "0.1.0", path = "../server/context" }
 either = "1.5"
-fbthrift = { version = "0.0.1+unstable", git = "https://github.com/facebook/fbthrift.git", branch = "main" }
+fbthrift = { version = "0.0.1+unstable", git = "https://github.com/ben--/fbthrift.git", branch = "compile-fix" }
 futures_watchdog = { version = "0.1.0", path = "../common/futures_watchdog" }
 serde = { version = "1.0.219", features = ["derive", "rc"] }
 serde_derive = "1.0.185"
