@@ -12,6 +12,7 @@ license = "MIT"
 [dependencies]
 blake3 = { version = "=1.8.2", features = ["mmap", "rayon", "traits-preview"] }
 bytes = { version = "1.10", features = ["serde"] }
+iobuf = { version = "0.1.0", git = "https://github.com/ben--/folly.git", branch = "rust-iobuf" }
 sapling-minibytes = { version = "0.1.0", path = "../minibytes" }
 sapling-types = { version = "0.1.0", path = "../types" }
 sha1 = "0.10.5"
